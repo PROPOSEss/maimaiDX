@@ -1,0 +1,27 @@
+# Backend build output
+backend/target/
+
+# Frontend dependencies and build output
+frontend/node_modules/
+frontend/dist/
+frontend/unpackage/
+
+# Local-only configuration and environment files
+.env
+.env.*
+!.env.example
+backend/src/main/resources/application-local.yml
+backend/src/main/resources/application-*.local.yml
+
+# IDE settings
+.idea/
+.vscode/
+*.iml
+
+# Logs and temporary files
+*.log
+*.tmp
+
+# Operating system files
+.DS_Store
+Thumbs.db

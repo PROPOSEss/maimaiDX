@@ -1,0 +1,12 @@
+﻿{
+  "source": "manual_json",
+  "rating": 13250,
+  "records": [
+    { "songId": "mvp001", "difficulty": 3, "achievement": 99.720, "dxScore": 1001200, "rate": "SSS", "fc": "FC", "fs": "FS" },
+    { "songId": "mvp001", "difficulty": 4, "achievement": 98.940, "dxScore": 996500, "rate": "SS", "fc": null, "fs": null },
+    { "songId": "mvp002", "difficulty": 3, "achievement": 100.120, "dxScore": 1005200, "rate": "SSS", "fc": "FC", "fs": "FS+" },
+    { "songId": "mvp002", "difficulty": 4, "achievement": 99.640, "dxScore": 1000100, "rate": "SSS", "fc": null, "fs": null },
+    { "songId": "mvp003", "difficulty": 3, "achievement": 100.410, "dxScore": 1007800, "rate": "SSS", "fc": "AP", "fs": "FS" },
+    { "songId": "mvp003", "difficulty": 4, "achievement": 99.180, "dxScore": 998800, "rate": "SS", "fc": "FC", "fs": null }
+  ]
+}

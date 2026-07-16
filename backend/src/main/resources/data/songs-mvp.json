@@ -1,0 +1,44 @@
+﻿[
+  {
+    "songId": "mvp001",
+    "title": "Demo Future Bass",
+    "artist": "MaiDX Lab",
+    "genre": "ORIGINAL",
+    "bpm": 178,
+    "version": "MVP",
+    "isNew": 1,
+    "charts": [
+      { "difficulty": 2, "level": 12, "ds": 12.7, "fitDiff": 12.5, "notes": 930, "tap": 520, "hold": 80, "slide": 230, "touch": 60, "breakCount": 40, "charter": "Codex" },
+      { "difficulty": 3, "level": 13, "ds": 13.8, "fitDiff": 13.6, "notes": 1260, "tap": 710, "hold": 110, "slide": 310, "touch": 80, "breakCount": 50, "charter": "Codex" },
+      { "difficulty": 4, "level": 14, "ds": 14.4, "fitDiff": 14.1, "notes": 1510, "tap": 870, "hold": 120, "slide": 390, "touch": 80, "breakCount": 50, "charter": "Codex" }
+    ]
+  },
+  {
+    "songId": "mvp002",
+    "title": "Edge of Rating",
+    "artist": "Rule Engine",
+    "genre": "ORIGINAL",
+    "bpm": 205,
+    "version": "MVP",
+    "isNew": 0,
+    "charts": [
+      { "difficulty": 2, "level": 13, "ds": 13.1, "fitDiff": 13.0, "notes": 1120, "tap": 650, "hold": 90, "slide": 280, "touch": 60, "breakCount": 40, "charter": "Codex" },
+      { "difficulty": 3, "level": 14, "ds": 14.2, "fitDiff": 13.9, "notes": 1460, "tap": 810, "hold": 130, "slide": 370, "touch": 90, "breakCount": 60, "charter": "Codex" },
+      { "difficulty": 4, "level": 14, "ds": 14.8, "fitDiff": 14.5, "notes": 1710, "tap": 960, "hold": 150, "slide": 430, "touch": 100, "breakCount": 70, "charter": "Codex" }
+    ]
+  },
+  {
+    "songId": "mvp003",
+    "title": "Stable Practice",
+    "artist": "Training Set",
+    "genre": "VARIETY",
+    "bpm": 160,
+    "version": "MVP",
+    "isNew": 0,
+    "charts": [
+      { "difficulty": 2, "level": 12, "ds": 12.4, "fitDiff": 12.1, "notes": 880, "tap": 500, "hold": 70, "slide": 210, "touch": 60, "breakCount": 40, "charter": "Codex" },
+      { "difficulty": 3, "level": 13, "ds": 13.5, "fitDiff": 13.2, "notes": 1210, "tap": 690, "hold": 100, "slide": 300, "touch": 80, "breakCount": 40, "charter": "Codex" },
+      { "difficulty": 4, "level": 14, "ds": 14.0, "fitDiff": 13.7, "notes": 1390, "tap": 790, "hold": 110, "slide": 350, "touch": 90, "breakCount": 50, "charter": "Codex" }
+    ]
+  }
+]

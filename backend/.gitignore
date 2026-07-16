@@ -1,0 +1,9 @@
+target/
+
+# IDE and local environment files
+.idea/
+*.iml
+
+# Logs and temporary files
+*.log
+*.tmp
