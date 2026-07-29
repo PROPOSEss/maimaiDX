@@ -1,9 +1,9 @@
 /**
- * API 鎺ュ彛瀹氫箟
+ * API 接口定义
  */
 import { get, post, del } from '../utils/request'
 
-// ========== 璁よ瘉鐩稿叧 ==========
+// ========== 认证相关 ==========
 
 export interface LoginParams {
   code: string
@@ -31,7 +31,7 @@ export function mockLogin(username = 'tester') {
   return post<LoginResult>(`/auth/mock-login?username=${encodeURIComponent(username)}`)
 }
 
-// ========== 鐜╁鐩稿叧 ==========
+// ========== 玩家相关 ==========
 
 export interface PlayerInfo {
   id: number
@@ -61,7 +61,7 @@ export function syncScores() {
   return post<void>('/player/sync')
 }
 
-// ========== 鎴愮哗鐩稿叧 ==========
+// ========== 成绩相关 ==========
 
 export interface ScoreInfo {
   id: number
@@ -88,7 +88,7 @@ export function getScoreList(page: number, size: number) {
   return get<{ records: ScoreInfo[]; total: number; current: number; size: number }>('/score/list', { page, size })
 }
 
-// ========== 鑳藉姏鐢诲儚 ==========
+// ========== 能力画像 ==========
 
 export interface TagAbility {
   tagName: string
@@ -126,7 +126,7 @@ export function refreshAbility() {
   return post<AbilityResult>('/analysis/ability/refresh')
 }
 
-// ========== 璁粌寤鸿 ==========
+// ========== 训练建议 ==========
 
 export interface TrainingInfo {
   id: number
@@ -157,7 +157,7 @@ export function getTrainingByTag(tagName: string) {
   return get<TrainingInfo[]>(`/training/suggestions/${tagName}`)
 }
 
-// ========== 姝屾洸鐩稿叧 ==========
+// ========== 歌曲相关 ==========
 
 export interface SongItem {
   id: number
@@ -213,7 +213,7 @@ export function getSongDetail(songId: string) {
   return get<SongDetail>(`/song/${songId}`)
 }
 
-// ========== 鎶曠エ鐩稿叧 ==========
+// ========== 投票相关 ==========
 
 export interface VoteStat {
   tagName: string

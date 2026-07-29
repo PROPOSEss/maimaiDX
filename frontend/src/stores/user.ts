@@ -1,5 +1,6 @@
 /**
- * 鐢ㄦ埛鐘舵€佺鐞嗭紙Pinia锛? */
+ * 用户状态管理（Pinia）
+ */
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { login as loginApi, mockLogin as mockLoginApi, getPlayerInfo, type LoginResult, type PlayerInfo } from '../api'
@@ -57,7 +58,7 @@ export const useUserStore = defineStore('user', () => {
   }
 
   /**
-   * 寰俊鐧诲綍
+   * 微信登录
    */
   async function wxLogin() {
     return new Promise((resolve, reject) => {
@@ -75,7 +76,7 @@ export const useUserStore = defineStore('user', () => {
           }
         },
         fail: (err) => {
-          uni.showToast({ title: '寰俊鐧诲綍澶辫触', icon: 'none' })
+          uni.showToast({ title: '微信登录失败', icon: 'none' })
           reject(err)
         },
       })
@@ -83,7 +84,7 @@ export const useUserStore = defineStore('user', () => {
   }
 
   /**
-   * 鍒锋柊鐜╁淇℃伅
+   * 刷新玩家信息
    */
   async function refreshPlayerInfo() {
     try {
@@ -96,7 +97,8 @@ export const useUserStore = defineStore('user', () => {
   }
 
   /**
-   * 閫€鍑虹櫥褰?   */
+   * 退出登录
+   */
   function logout() {
     token.value = ''
     userId.value = 0
