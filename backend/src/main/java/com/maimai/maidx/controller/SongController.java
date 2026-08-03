@@ -2,15 +2,14 @@ package com.maimai.maidx.controller;
 
 import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.maimai.maidx.dto.MvpDtos;
 import com.maimai.maidx.dto.Result;
 import com.maimai.maidx.dto.SongDetailResponse;
 import com.maimai.maidx.entity.Song;
-import com.maimai.maidx.entity.SongDifficulty;
 import com.maimai.maidx.entity.SongFeature;
 import com.maimai.maidx.entity.ScoreRecord;
 import com.maimai.maidx.enums.DifficultyEnum;
 import com.maimai.maidx.repository.ScoreRecordRepository;
-import com.maimai.maidx.repository.SongDifficultyRepository;
 import com.maimai.maidx.service.*;
 import com.maimai.maidx.service.SongDifficultyVoteService.TagVoteStat;
 import io.swagger.v3.oas.annotations.Operation;
@@ -36,9 +35,9 @@ import java.util.stream.Collectors;
 public class SongController {
 
     private final SongService songService;
+    private final SongCatalogService songCatalogService;
     private final SongFeatureService songFeatureService;
     private final SongDifficultyVoteService voteService;
-    private final SongDifficultyRepository songDifficultyRepository;
     private final ScoreRecordRepository scoreRecordRepository;
     private final PlayerBindService playerBindService;
 
@@ -70,30 +69,16 @@ public class SongController {
             @PathVariable String songId,
             @RequestHeader(value = "X-User-Id", required = false) Long userId) {
         // 1. 获取歌曲基本信息
-        Song song = songService.getBySongId(songId);
-        if (song == null) {
+        SongDetailResponse response = songCatalogService.getSongDetail(songId);
+        if (response == null) {
             return Result.error(404, "歌曲不存在");
         }
-
-        SongDetailResponse response = new SongDetailResponse();
-        response.setId(song.getId());
-        response.setSongId(song.getSongId());
-        response.setTitle(song.getTitle());
-        response.setTitleEn(song.getTitleEn());
-        response.setArtist(song.getArtist());
-        response.setArtistEn(song.getArtistEn());
-        response.setBpm(song.getBpm());
-        response.setVersion(song.getVersion());
-        response.setGenre(song.getGenre());
 
         // 2. 获取所有难度的谱面信息（由Service层查询填充）
         // 实际查询在service完成，这里先设置基础字段
         // 延迟到具体的SongService方法中实现
 
-        List<SongDifficulty> difficulties = songDifficultyRepository.selectList(
-                new LambdaQueryWrapper<SongDifficulty>()
-                        .eq(SongDifficulty::getSongId, song.getId())
-                        .orderByAsc(SongDifficulty::getDifficulty));
+        List<MvpDtos.ChartItem> difficulties = songCatalogService.getCharts(songId);
 
         Long playerId = null;
         if (userId != null) {
@@ -108,7 +93,7 @@ public class SongController {
 
         List<String> votedTags = new ArrayList<>();
         Map<String, SongDetailResponse.VoteStat> voteStatMap = new java.util.LinkedHashMap<>();
-        for (SongDifficulty difficulty : difficulties) {
+        for (MvpDtos.ChartItem difficulty : difficulties) {
             if (userId != null) {
                 voteService.getUserVotes(userId, difficulty.getId()).stream()
                         .map(vote -> vote.getTagName())
@@ -135,7 +120,7 @@ public class SongController {
         return Result.success(response);
     }
 
-    private SongDetailResponse.DifficultyInfo convertDifficulty(SongDifficulty difficulty, Long playerId) {
+    private SongDetailResponse.DifficultyInfo convertDifficulty(MvpDtos.ChartItem difficulty, Long playerId) {
         SongDetailResponse.DifficultyInfo info = new SongDetailResponse.DifficultyInfo();
         info.setId(difficulty.getId());
         info.setDifficulty(difficulty.getDifficulty());
@@ -145,14 +130,14 @@ public class SongController {
             info.setDifficultyName("UNKNOWN");
         }
         info.setLevel(difficulty.getLevel());
-        info.setLevelDecimal(difficulty.getLevelDecimal() != null
-                ? difficulty.getLevelDecimal().doubleValue()
+        info.setLevelDecimal(difficulty.getDs() != null
+                ? difficulty.getDs().doubleValue()
                 : null);
-        info.setNoteCount(difficulty.getNoteCount());
-        info.setTapCount(difficulty.getTapCount());
-        info.setHoldCount(difficulty.getHoldCount());
-        info.setSlideCount(difficulty.getSlideCount());
-        info.setTouchCount(difficulty.getTouchCount());
+        info.setNoteCount(difficulty.getNotes());
+        info.setTapCount(difficulty.getTap());
+        info.setHoldCount(difficulty.getHold());
+        info.setSlideCount(difficulty.getSlide());
+        info.setTouchCount(difficulty.getTouch());
         info.setBreakCount(difficulty.getBreakCount());
 
         info.setFeatures(songFeatureService.getFeaturesByDifficultyId(difficulty.getId()).stream()

@@ -17,7 +17,9 @@ import com.maimai.maidx.repository.ScoreSnapshotRepository;
 import com.maimai.maidx.repository.SongDifficultyRepository;
 import com.maimai.maidx.repository.SongRepository;
 import com.maimai.maidx.service.MvpService;
+import com.maimai.maidx.service.SongCatalogService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
 import org.springframework.stereotype.Service;
@@ -41,6 +43,7 @@ import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class MvpServiceImpl implements MvpService {
 
     private static final BigDecimal TARGET_SSS = new BigDecimal("100.000");
@@ -53,6 +56,7 @@ public class MvpServiceImpl implements MvpService {
     private final RecommendationItemRepository recommendationItemRepository;
     private final ObjectMapper objectMapper;
     private final ResourceLoader resourceLoader;
+    private final SongCatalogService songCatalogService;
 
     @Override
     @Transactional
@@ -70,6 +74,11 @@ public class MvpServiceImpl implements MvpService {
                 upsertChart(song.getId(), chartItem);
                 chartCount++;
             }
+        }
+        try {
+            songCatalogService.clearSongCaches();
+        } catch (RuntimeException e) {
+            log.warn("Song cache clear failed after song sync: error={}", e.getClass().getSimpleName());
         }
         return chartCount;
     }
@@ -97,11 +106,7 @@ public class MvpServiceImpl implements MvpService {
 
     @Override
     public List<MvpDtos.ChartItem> getCharts(String songId) {
-        Song song = findSongByPublicId(songId).orElse(null);
-        if (song == null) {
-            return List.of();
-        }
-        return getChartsBySongId(song.getId()).stream().map(this::toChartItem).toList();
+        return songCatalogService.getCharts(songId);
     }
 
     @Override
@@ -365,12 +370,6 @@ public class MvpServiceImpl implements MvpService {
                 .last("LIMIT 1")));
     }
 
-    private List<SongDifficulty> getChartsBySongId(Long songId) {
-        return songDifficultyRepository.selectList(new LambdaQueryWrapper<SongDifficulty>()
-                .eq(SongDifficulty::getSongId, songId)
-                .orderByAsc(SongDifficulty::getDifficulty));
-    }
-
     private ScoreSnapshot resolveSnapshot(Long userId, Long snapshotId) {
         LambdaQueryWrapper<ScoreSnapshot> wrapper = new LambdaQueryWrapper<ScoreSnapshot>()
                 .eq(ScoreSnapshot::getUserId, userId);
@@ -396,25 +395,7 @@ public class MvpServiceImpl implements MvpService {
         item.setBpm(song.getBpm());
         item.setVersion(song.getVersion());
         item.setIsNew(song.getIsNew());
-        item.setCharts(getChartsBySongId(song.getId()).stream().map(this::toChartItem).toList());
-        return item;
-    }
-
-    private MvpDtos.ChartItem toChartItem(SongDifficulty chart) {
-        MvpDtos.ChartItem item = new MvpDtos.ChartItem();
-        item.setId(chart.getId());
-        item.setDifficulty(chart.getDifficulty());
-        item.setDifficultyName(difficultyName(chart.getDifficulty()));
-        item.setLevel(chart.getLevel());
-        item.setDs(chart.getLevelDecimal());
-        item.setFitDiff(chart.getFitDiff());
-        item.setNotes(chart.getNoteCount());
-        item.setTap(chart.getTapCount());
-        item.setHold(chart.getHoldCount());
-        item.setSlide(chart.getSlideCount());
-        item.setTouch(chart.getTouchCount());
-        item.setBreakCount(chart.getBreakCount());
-        item.setCharter(chart.getCharter());
+        item.setCharts(songCatalogService.getCharts(song.getSongId()));
         return item;
     }
 

@@ -8,6 +8,8 @@ spring:
     name: maidx-insight
   profiles:
     active: ${SPRING_PROFILES_ACTIVE:dev}
+  cache:
+    type: redis
 
   # 数据源配置
   datasource:
@@ -25,7 +27,7 @@ spring:
   # Redis 配置
   data:
     redis:
-      host: ${REDIS_HOST:localhost}
+      host: ${REDIS_HOST:127.0.0.1}
       port: ${REDIS_PORT:6379}
       password: ${REDIS_PASSWORD:}
       database: ${REDIS_DATABASE:0}
@@ -78,6 +80,10 @@ maimai:
   api:
     base-url: https://maimaidx-eng.com/maimaidxng/Record/
     timeout: 10000
+
+maidx:
+  cache:
+    song-ttl: ${MAIDX_CACHE_SONG_TTL:6h}
 
 # AI成绩助手配置
 assistant:

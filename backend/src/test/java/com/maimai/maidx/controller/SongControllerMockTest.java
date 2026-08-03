@@ -1,11 +1,12 @@
 package com.maimai.maidx.controller;
 
+import com.maimai.maidx.dto.MvpDtos;
+import com.maimai.maidx.dto.SongDetailResponse;
 import com.maimai.maidx.entity.Song;
-import com.maimai.maidx.entity.SongDifficulty;
 import com.maimai.maidx.entity.SongFeature;
 import com.maimai.maidx.repository.ScoreRecordRepository;
-import com.maimai.maidx.repository.SongDifficultyRepository;
 import com.maimai.maidx.service.PlayerBindService;
+import com.maimai.maidx.service.SongCatalogService;
 import com.maimai.maidx.service.SongDifficultyVoteService;
 import com.maimai.maidx.service.SongFeatureService;
 import com.maimai.maidx.service.SongService;
@@ -32,9 +33,9 @@ class SongControllerMockTest {
     private MockMvc mockMvc;
 
     @Mock private SongService songService;
+    @Mock private SongCatalogService songCatalogService;
     @Mock private SongFeatureService songFeatureService;
     @Mock private SongDifficultyVoteService voteService;
-    @Mock private SongDifficultyRepository songDifficultyRepository;
     @Mock private ScoreRecordRepository scoreRecordRepository;
     @Mock private PlayerBindService playerBindService;
 
@@ -42,23 +43,22 @@ class SongControllerMockTest {
     void setUp() {
         mockMvc = MockMvcBuilders.standaloneSetup(new SongController(
                 songService,
+                songCatalogService,
                 songFeatureService,
                 voteService,
-                songDifficultyRepository,
                 scoreRecordRepository,
                 playerBindService)).build();
     }
 
     @Test
     void songDetailIncludesDifficultiesAndFeatures() throws Exception {
-        Song song = new Song();
+        SongDetailResponse song = new SongDetailResponse();
         song.setId(1L);
         song.setSongId("s001");
         song.setTitle("Titania");
 
-        SongDifficulty difficulty = new SongDifficulty();
+        MvpDtos.ChartItem difficulty = new MvpDtos.ChartItem();
         difficulty.setId(11L);
-        difficulty.setSongId(1L);
         difficulty.setDifficulty(3);
         difficulty.setLevel(14);
 
@@ -68,8 +68,8 @@ class SongControllerMockTest {
         feature.setWeight(new BigDecimal("40"));
         feature.setSource(1);
 
-        when(songService.getBySongId("s001")).thenReturn(song);
-        when(songDifficultyRepository.selectList(any())).thenReturn(List.of(difficulty));
+        when(songCatalogService.getSongDetail("s001")).thenReturn(song);
+        when(songCatalogService.getCharts("s001")).thenReturn(List.of(difficulty));
         when(songFeatureService.getFeaturesByDifficultyId(11L)).thenReturn(List.of(feature));
         when(voteService.getVoteStats(11L)).thenReturn(List.of());
 
