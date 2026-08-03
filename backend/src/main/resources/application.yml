@@ -13,7 +13,7 @@ spring:
   datasource:
     url: ${DB_URL:jdbc:mysql://localhost:3306/maimai_dx?useUnicode=true&characterEncoding=utf-8&serverTimezone=Asia/Shanghai&useSSL=false&allowPublicKeyRetrieval=true}
     username: ${DB_USERNAME:root}
-    password: ${DB_PASSWORD:}
+    password: "${DB_PASSWORD:}"
     driver-class-name: com.mysql.cj.jdbc.Driver
     hikari:
       minimum-idle: 5
@@ -78,6 +78,16 @@ maimai:
   api:
     base-url: https://maimaidx-eng.com/maimaidxng/Record/
     timeout: 10000
+
+# AI成绩助手配置
+assistant:
+  default-user-id: ${ASSISTANT_DEFAULT_USER_ID:999}
+  ai:
+    enabled: ${ASSISTANT_AI_ENABLED:false}
+    api-key: ${ASSISTANT_AI_API_KEY:}
+    base-url: ${ASSISTANT_AI_BASE_URL:https://api.openai.com/v1/chat/completions}
+    model: ${ASSISTANT_AI_MODEL:gpt-4o-mini}
+    timeout-ms: ${ASSISTANT_AI_TIMEOUT_MS:3000}
 
 # Springdoc / Swagger 配置
 springdoc:
