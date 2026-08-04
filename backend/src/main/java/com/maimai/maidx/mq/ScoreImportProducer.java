@@ -50,6 +50,11 @@ public class ScoreImportProducer {
         send(event.taskId());
     }
 
+    @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
+    public void onTaskRetry(TaskRetryEvent event) {
+        send(event.taskId());
+    }
+
     public void send(Long taskId) {
         try {
             byte[] body = String.valueOf(taskId).getBytes(StandardCharsets.UTF_8);

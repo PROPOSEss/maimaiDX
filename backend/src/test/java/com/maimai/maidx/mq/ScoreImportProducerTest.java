@@ -10,6 +10,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.amqp.core.ReturnedMessage;
 import org.springframework.amqp.rabbit.connection.CorrelationData;
 import org.springframework.amqp.rabbit.core.RabbitTemplate;
+import org.springframework.transaction.event.TransactionPhase;
+import org.springframework.transaction.event.TransactionalEventListener;
+
+import java.lang.reflect.Method;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -94,5 +98,24 @@ class ScoreImportProducerTest {
         captor.getValue().returnedMessage(new ReturnedMessage(message, 312, "NO_ROUTE", "ex", "rk"));
 
         verify(statusService).markSendFailed(eq(79L), any());
+    }
+
+    @Test
+    void retryEventIsDispatchedOnlyAfterTransactionCommit() throws Exception {
+        Method method = ScoreImportProducer.class.getMethod("onTaskRetry", TaskRetryEvent.class);
+        TransactionalEventListener listener = method.getAnnotation(TransactionalEventListener.class);
+
+        assertThat(listener).isNotNull();
+        assertThat(listener.phase()).isEqualTo(TransactionPhase.AFTER_COMMIT);
+    }
+
+    @Test
+    void retryEventSendFailureMarksSameTaskSendFailed() {
+        doThrow(new IllegalStateException("rabbit password=secret")).when(rabbitTemplate)
+                .send(eq(RabbitMqConfig.SCORE_IMPORT_EXCHANGE), eq(RabbitMqConfig.SCORE_IMPORT_ROUTING_KEY), any(), any(CorrelationData.class));
+
+        producer.onTaskRetry(new TaskRetryEvent(93L));
+
+        verify(statusService).markSendFailed(eq(93L), any());
     }
 }

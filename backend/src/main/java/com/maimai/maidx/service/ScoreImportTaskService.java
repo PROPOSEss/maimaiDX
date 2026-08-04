@@ -10,4 +10,6 @@ public interface ScoreImportTaskService {
     ImportTaskResponse getTask(Long userId, Long taskId);
 
     ImportTaskResponse getTaskByRequest(Long userId, String requestId);
+
+    ImportTaskResponse retrySendFailedTask(Long userId, Long taskId);
 }

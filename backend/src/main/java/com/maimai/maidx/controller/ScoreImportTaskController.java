@@ -44,4 +44,11 @@ public class ScoreImportTaskController {
                                                        @RequestParam Long userId) {
         return Result.success(scoreImportTaskService.getTaskByRequest(userId, requestId));
     }
+
+    @Operation(summary = "Retry a SEND_FAILED asynchronous score import task")
+    @PostMapping("/tasks/{taskId}/retry")
+    public Result<ImportTaskResponse> retry(@PathVariable Long taskId,
+                                            @RequestParam Long userId) {
+        return Result.success(scoreImportTaskService.retrySendFailedTask(userId, taskId));
+    }
 }

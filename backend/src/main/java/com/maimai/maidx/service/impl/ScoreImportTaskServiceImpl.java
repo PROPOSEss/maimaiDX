@@ -1,6 +1,7 @@
 package com.maimai.maidx.service.impl;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.conditions.update.UpdateWrapper;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.maimai.maidx.dto.AsyncScoreImportRequest;
@@ -9,6 +10,7 @@ import com.maimai.maidx.entity.ImportTask;
 import com.maimai.maidx.entity.User;
 import com.maimai.maidx.enums.ImportTaskStatus;
 import com.maimai.maidx.mq.TaskCreatedEvent;
+import com.maimai.maidx.mq.TaskRetryEvent;
 import com.maimai.maidx.repository.ImportTaskRepository;
 import com.maimai.maidx.repository.UserRepository;
 import com.maimai.maidx.service.ScoreImportTaskService;
@@ -91,14 +93,41 @@ public class ScoreImportTaskServiceImpl implements ScoreImportTaskService {
         return ImportTaskResponse.from(task);
     }
 
+    @Override
+    @Transactional
+    public ImportTaskResponse retrySendFailedTask(Long userId, Long taskId) {
+        validateUserExists(userId);
+        if (taskId == null || taskId <= 0) {
+            throw new IllegalArgumentException("taskId 必须大于 0");
+        }
+
+        int updated = importTaskRepository.update(null, new UpdateWrapper<ImportTask>()
+                .eq("id", taskId)
+                .eq("user_id", userId)
+                .eq("status", ImportTaskStatus.SEND_FAILED.name())
+                .set("status", ImportTaskStatus.PENDING.name())
+                .set("error_message", null)
+                .set("finished_at", null)
+                .setSql("updated_at = NOW()"));
+
+        if (updated != 1) {
+            ImportTask current = importTaskRepository.selectById(taskId);
+            if (current == null || !userId.equals(current.getUserId())) {
+                throw new IllegalArgumentException("导入任务不存在: " + taskId);
+            }
+            throw new IllegalArgumentException("只有SEND_FAILED状态的导入任务允许重试，当前状态: " + current.getStatus());
+        }
+
+        ImportTask task = importTaskRepository.selectById(taskId);
+        if (task == null || !userId.equals(task.getUserId())) {
+            throw new IllegalArgumentException("导入任务不存在: " + taskId);
+        }
+        eventPublisher.publishEvent(new TaskRetryEvent(taskId));
+        return ImportTaskResponse.from(task);
+    }
+
     private void validate(Long userId, AsyncScoreImportRequest request) {
-        if (userId == null || userId <= 0) {
-            throw new IllegalArgumentException("userId 必须大于 0");
-        }
-        User user = userRepository.selectById(userId);
-        if (user == null) {
-            throw new IllegalArgumentException("用户不存在: " + userId);
-        }
+        validateUserExists(userId);
         if (request == null) {
             throw new IllegalArgumentException("请求体不能为空");
         }
@@ -113,6 +142,16 @@ public class ScoreImportTaskServiceImpl implements ScoreImportTaskService {
         }
         if (request.getRecords().size() > MAX_RECORDS) {
             throw new IllegalArgumentException("records最多导入200条");
+        }
+    }
+
+    private void validateUserExists(Long userId) {
+        if (userId == null || userId <= 0) {
+            throw new IllegalArgumentException("userId 必须大于 0");
+        }
+        User user = userRepository.selectById(userId);
+        if (user == null) {
+            throw new IllegalArgumentException("用户不存在: " + userId);
         }
     }
 
