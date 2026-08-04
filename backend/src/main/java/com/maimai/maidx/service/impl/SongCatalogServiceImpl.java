@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.Cache;
 import org.springframework.cache.CacheManager;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -31,6 +32,7 @@ public class SongCatalogServiceImpl implements SongCatalogService {
     private final CacheManager cacheManager;
 
     @Override
+    @Cacheable(cacheNames = CacheConfig.SONG_DETAIL_CACHE, key = "#songId", unless = "#result == null")
     public SongDetailResponse getSongDetail(String songId) {
         return findSongByPublicId(songId)
                 .map(this::toSongDetailResponse)
@@ -38,6 +40,7 @@ public class SongCatalogServiceImpl implements SongCatalogService {
     }
 
     @Override
+    @Cacheable(cacheNames = CacheConfig.SONG_CHARTS_CACHE, key = "#songId", unless = "#result == null || #result.isEmpty()")
     public List<MvpDtos.ChartItem> getCharts(String songId) {
         return findSongByPublicId(songId)
                 .map(song -> songDifficultyRepository.selectList(new LambdaQueryWrapper<SongDifficulty>()
