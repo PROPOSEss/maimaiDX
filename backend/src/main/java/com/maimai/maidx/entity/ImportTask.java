@@ -11,27 +11,36 @@ import java.io.Serializable;
 import java.time.LocalDateTime;
 
 /**
- * One manual score import event. Keeping snapshots makes progress traceable.
+ * Asynchronous score import task.
  */
 @Data
-@TableName("score_snapshot")
-public class ScoreSnapshot implements Serializable {
+@TableName("import_task")
+public class ImportTask implements Serializable {
 
     @TableId(type = IdType.AUTO)
     private Long id;
 
-    private Long userId;
-
     private String requestId;
 
-    private String source;
+    private Long userId;
 
-    private Integer rating;
+    private String status;
 
-    private Integer recordCount;
+    private String requestPayload;
 
-    private LocalDateTime importedAt;
+    private Long snapshotId;
+
+    private Integer attemptCount;
+
+    private String errorMessage;
+
+    private LocalDateTime processingStartedAt;
+
+    private LocalDateTime finishedAt;
 
     @TableField(fill = FieldFill.INSERT)
     private LocalDateTime createdAt;
+
+    @TableField(fill = FieldFill.INSERT_UPDATE)
+    private LocalDateTime updatedAt;
 }

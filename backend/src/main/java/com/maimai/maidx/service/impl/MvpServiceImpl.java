@@ -22,6 +22,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.Resource;
 import org.springframework.core.io.ResourceLoader;
+import org.springframework.dao.DuplicateKeyException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.util.StringUtils;
@@ -112,17 +113,40 @@ public class MvpServiceImpl implements MvpService {
     @Override
     @Transactional
     public MvpDtos.ImportResult importScores(Long userId, MvpDtos.ScoreImportRequest request) {
+        return importScores(userId, request, null);
+    }
+
+    @Override
+    @Transactional
+    public MvpDtos.ImportResult importScores(Long userId, MvpDtos.ScoreImportRequest request, String requestId) {
         if (request == null || request.getRecords() == null || request.getRecords().isEmpty()) {
             throw new IllegalArgumentException("成绩 JSON 不能为空");
+        }
+        if (StringUtils.hasText(requestId)) {
+            ScoreSnapshot existing = findSnapshotByRequestId(userId, requestId);
+            if (existing != null) {
+                return toImportResult(existing);
+            }
         }
 
         ScoreSnapshot snapshot = new ScoreSnapshot();
         snapshot.setUserId(userId);
+        snapshot.setRequestId(StringUtils.hasText(requestId) ? requestId : null);
         snapshot.setSource(StringUtils.hasText(request.getSource()) ? request.getSource() : "manual_json");
         snapshot.setRating(request.getRating() == null ? 0 : request.getRating());
         snapshot.setRecordCount(request.getRecords().size());
         snapshot.setImportedAt(LocalDateTime.now());
-        scoreSnapshotRepository.insert(snapshot);
+        try {
+            scoreSnapshotRepository.insert(snapshot);
+        } catch (DuplicateKeyException e) {
+            if (StringUtils.hasText(requestId)) {
+                ScoreSnapshot existing = findSnapshotByRequestId(userId, requestId);
+                if (existing != null) {
+                    return toImportResult(existing);
+                }
+            }
+            throw e;
+        }
 
         List<ScoreRecord> inserted = new ArrayList<>();
         for (MvpDtos.ScoreImportItem item : request.getRecords()) {
@@ -164,12 +188,30 @@ public class MvpServiceImpl implements MvpService {
             scoreRecordRepository.updateById(record);
         }
 
+        return toImportResult(snapshot, inserted.size(), b50.size());
+    }
+
+    private ScoreSnapshot findSnapshotByRequestId(Long userId, String requestId) {
+        return scoreSnapshotRepository.selectOne(new LambdaQueryWrapper<ScoreSnapshot>()
+                .eq(ScoreSnapshot::getUserId, userId)
+                .eq(ScoreSnapshot::getRequestId, requestId)
+                .last("LIMIT 1"));
+    }
+
+    private MvpDtos.ImportResult toImportResult(ScoreSnapshot snapshot) {
+        Long b50Count = scoreRecordRepository.selectCount(new LambdaQueryWrapper<ScoreRecord>()
+                .eq(ScoreRecord::getSnapshotId, snapshot.getId())
+                .eq(ScoreRecord::getIsB50, 1));
+        return toImportResult(snapshot, snapshot.getRecordCount() == null ? 0 : snapshot.getRecordCount(), b50Count.intValue());
+    }
+
+    private MvpDtos.ImportResult toImportResult(ScoreSnapshot snapshot, int importedCount, int b50Count) {
         MvpDtos.ImportResult result = new MvpDtos.ImportResult();
         result.setSnapshotId(snapshot.getId());
-        result.setUserId(userId);
+        result.setUserId(snapshot.getUserId());
         result.setRating(snapshot.getRating());
-        result.setImportedCount(inserted.size());
-        result.setB50Count(b50.size());
+        result.setImportedCount(importedCount);
+        result.setB50Count(b50Count);
         result.setImportedAt(snapshot.getImportedAt());
         return result;
     }

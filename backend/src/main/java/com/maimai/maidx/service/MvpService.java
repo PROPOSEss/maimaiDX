@@ -16,6 +16,8 @@ public interface MvpService {
 
     MvpDtos.ImportResult importScores(Long userId, MvpDtos.ScoreImportRequest request);
 
+    MvpDtos.ImportResult importScores(Long userId, MvpDtos.ScoreImportRequest request, String requestId);
+
     MvpDtos.B50Response getB50(Long userId, Long snapshotId);
 
     MvpDtos.RecommendationResponse generateRecommendations(Long userId, Long snapshotId);

@@ -39,6 +39,20 @@ spring:
           max-wait: 2000ms
       timeout: 3000ms
 
+  rabbitmq:
+    host: ${RABBITMQ_HOST:127.0.0.1}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USERNAME:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    virtual-host: ${RABBITMQ_VHOST:/}
+    publisher-confirm-type: correlated
+    publisher-returns: true
+    template:
+      mandatory: true
+    listener:
+      simple:
+        acknowledge-mode: manual
+
   # Jackson 配置
   jackson:
     date-format: yyyy-MM-dd HH:mm:ss
@@ -57,7 +71,7 @@ mybatis-plus:
       logic-not-delete-value: 0
   configuration:
     map-underscore-to-camel-case: true
-    log-impl: org.apache.ibatis.logging.stdout.StdOutImpl
+    log-impl: org.apache.ibatis.logging.nologging.NoLoggingImpl
 
 # 日志配置
 logging:
