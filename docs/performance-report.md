@@ -62,10 +62,10 @@ MvpController#getCharts
 
 ### 4.1 Redis key 验证
 
-执行前清理宿主机 Redis：
+执行前仅删除本次测试使用的目标缓存 key，避免影响同一 Redis 数据库中的其他数据：
 
 ```powershell
-redis-cli FLUSHDB
+redis-cli DEL "maidx:songCharts::mvp001"
 ```
 
 第一次请求后：
@@ -298,7 +298,7 @@ docker exec maidx-rabbitmq rabbitmqctl list_queues name messages messages_ready 
 
 ```powershell
 pwsh -NoProfile -ExecutionPolicy Bypass -File .\performance\cleanup-performance-data.ps1
-redis-cli FLUSHDB
+redis-cli DEL "maidx:songCharts::mvp001"
 ```
 
 清理后校验：
