@@ -2,29 +2,23 @@ package com.maimai.maidx.assistant.parser;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.maimai.maidx.assistant.config.AssistantProperties;
 import com.maimai.maidx.assistant.dto.ParsedIntent;
 import com.maimai.maidx.assistant.enums.IntentType;
+import com.maimai.maidx.assistant.enums.ParserSource;
+import com.maimai.maidx.assistant.llm.LlmClient;
 import lombok.extern.slf4j.Slf4j;
-import okhttp3.MediaType;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.RequestBody;
-import okhttp3.Response;
 import org.springframework.context.annotation.Primary;
 import org.springframework.stereotype.Component;
-import org.springframework.util.StringUtils;
 
-import java.time.Duration;
-import java.util.List;
-import java.util.Map;
+import java.util.Set;
 
 @Slf4j
 @Primary
 @Component
 public class LlmIntentParser implements IntentParser {
 
-    private static final MediaType JSON = MediaType.get("application/json; charset=utf-8");
+    private static final Set<String> ALLOWED_FIELDS = Set.of(
+            "intent", "limit", "count", "adviceCount", "minConstant", "maxConstant");
     private static final String SYSTEM_PROMPT = """
             You parse maimaiDX assistant user messages into JSON only.
             Return exactly one JSON object. Do not return Markdown, explanation, SQL, or extra text.
@@ -32,32 +26,34 @@ public class LlmIntentParser implements IntentParser {
             {"intent":"RECENT_SCORES","limit":20}
             {"intent":"TOP_SCORES","limit":30}
             {"intent":"RANDOM_RECOMMENDATION","count":5,"minConstant":12.7,"maxConstant":13.4}
+            {"intent":"TRAINING_ADVICE","adviceCount":3}
             {"intent":"UNKNOWN"}
-            Allowed fields: intent, limit, count, minConstant, maxConstant.
+            Allowed fields: intent, limit, count, adviceCount, minConstant, maxConstant.
             """;
 
-    private final AssistantProperties properties;
+    private final LlmClient llmClient;
     private final RuleBasedIntentParser fallbackParser;
     private final ObjectMapper objectMapper;
 
-    public LlmIntentParser(AssistantProperties properties,
+    public LlmIntentParser(LlmClient llmClient,
                            RuleBasedIntentParser fallbackParser,
                            ObjectMapper objectMapper) {
-        this.properties = properties;
+        this.llmClient = llmClient;
         this.fallbackParser = fallbackParser;
         this.objectMapper = objectMapper;
     }
 
     @Override
     public ParsedIntent parse(String message) {
-        if (!shouldCallLlm()) {
+        if (!llmClient.isAvailable()) {
             return fallbackParser.parse(message);
         }
         try {
-            ParsedIntent parsed = parseWithLlm(message);
+            ParsedIntent parsed = parseJsonContent(llmClient.chat(SYSTEM_PROMPT, message));
             if (parsed == null || parsed.getIntent() == null) {
                 return fallbackParser.parse(message);
             }
+            parsed.setParserSource(ParserSource.LLM);
             return parsed;
         } catch (Exception e) {
             log.warn("LLM意图解析失败，已降级为规则解析: {}", e.getClass().getSimpleName());
@@ -65,53 +61,16 @@ public class LlmIntentParser implements IntentParser {
         }
     }
 
-    private boolean shouldCallLlm() {
-        AssistantProperties.Ai ai = properties.getAi();
-        return ai != null
-                && ai.isEnabled()
-                && StringUtils.hasText(ai.getApiKey())
-                && StringUtils.hasText(ai.getBaseUrl())
-                && StringUtils.hasText(ai.getModel());
-    }
-
-    private ParsedIntent parseWithLlm(String message) throws Exception {
-        AssistantProperties.Ai ai = properties.getAi();
-        OkHttpClient client = new OkHttpClient.Builder()
-                .connectTimeout(Duration.ofMillis(ai.getTimeoutMs()))
-                .readTimeout(Duration.ofMillis(ai.getTimeoutMs()))
-                .writeTimeout(Duration.ofMillis(ai.getTimeoutMs()))
-                .build();
-
-        Map<String, Object> payload = Map.of(
-                "model", ai.getModel(),
-                "temperature", 0,
-                "messages", List.of(
-                        Map.of("role", "system", "content", SYSTEM_PROMPT),
-                        Map.of("role", "user", "content", message)
-                )
-        );
-
-        Request request = new Request.Builder()
-                .url(ai.getBaseUrl())
-                .addHeader("Authorization", "Bearer " + ai.getApiKey())
-                .post(RequestBody.create(objectMapper.writeValueAsString(payload), JSON))
-                .build();
-
-        try (Response response = client.newCall(request).execute()) {
-            if (!response.isSuccessful() || response.body() == null) {
-                throw new IllegalStateException("LLM response failed");
-            }
-            JsonNode root = objectMapper.readTree(response.body().string());
-            JsonNode contentNode = root.path("choices").path(0).path("message").path("content");
-            if (!contentNode.isTextual()) {
-                throw new IllegalArgumentException("LLM content missing");
-            }
-            return parseJsonContent(contentNode.asText());
-        }
-    }
-
     private ParsedIntent parseJsonContent(String content) throws Exception {
         JsonNode node = objectMapper.readTree(content.trim());
+        if (!node.isObject()) {
+            throw new IllegalArgumentException("LLM intent content must be object");
+        }
+        node.fieldNames().forEachRemaining(field -> {
+            if (!ALLOWED_FIELDS.contains(field)) {
+                throw new IllegalArgumentException("Unsupported LLM intent field");
+            }
+        });
         String intentValue = node.path("intent").asText(null);
         IntentType intent = IntentType.valueOf(intentValue);
 
@@ -123,11 +82,19 @@ public class LlmIntentParser implements IntentParser {
         if (node.hasNonNull("count")) {
             parsed.setCount(node.get("count").asInt());
         }
+        if (node.hasNonNull("adviceCount")) {
+            parsed.setAdviceCount(node.get("adviceCount").asInt());
+        }
         if (node.hasNonNull("minConstant")) {
             parsed.setMinConstant(node.get("minConstant").decimalValue());
         }
         if (node.hasNonNull("maxConstant")) {
             parsed.setMaxConstant(node.get("maxConstant").decimalValue());
+        }
+        if (parsed.getMinConstant() != null
+                && parsed.getMaxConstant() != null
+                && parsed.getMinConstant().compareTo(parsed.getMaxConstant()) > 0) {
+            throw new IllegalArgumentException("minConstant greater than maxConstant");
         }
         return parsed;
     }

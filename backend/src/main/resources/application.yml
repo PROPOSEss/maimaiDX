@@ -108,6 +108,7 @@ assistant:
     base-url: ${ASSISTANT_AI_BASE_URL:https://api.openai.com/v1/chat/completions}
     model: ${ASSISTANT_AI_MODEL:gpt-4o-mini}
     timeout-ms: ${ASSISTANT_AI_TIMEOUT_MS:3000}
+    max-tokens: ${ASSISTANT_AI_MAX_TOKENS:600}
 
 # Springdoc / Swagger 配置
 springdoc:

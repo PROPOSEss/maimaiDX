@@ -3,6 +3,7 @@ package com.maimai.maidx.assistant.tool;
 import com.maimai.maidx.assistant.dto.AssistantQueryResponse;
 import com.maimai.maidx.assistant.dto.ParsedIntent;
 import com.maimai.maidx.assistant.enums.IntentType;
+import com.maimai.maidx.assistant.enums.ParserSource;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -22,12 +23,14 @@ class AssistantToolRouterTest {
         expected.setIntent(IntentType.RECENT_SCORES);
         ParsedIntent intent = new ParsedIntent();
         intent.setIntent(IntentType.RECENT_SCORES);
+        intent.setParserSource(ParserSource.LLM);
         when(tool.execute(999L, intent)).thenReturn(expected);
         AssistantToolRouter router = new AssistantToolRouter(List.of(tool));
 
         AssistantQueryResponse response = router.route(999L, intent);
 
         assertThat(response).isSameAs(expected);
+        assertThat(response.getParserSource()).isEqualTo(ParserSource.LLM);
     }
 
     @Test

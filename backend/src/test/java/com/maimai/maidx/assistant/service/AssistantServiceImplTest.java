@@ -109,6 +109,37 @@ class AssistantServiceImplTest {
                 .hasMessage("minConstant 不能大于 maxConstant");
     }
 
+    @Test
+    void defaultsTrainingAdviceCountToThree() {
+        User user = new User();
+        user.setId(999L);
+        when(userRepository.selectById(999L)).thenReturn(user);
+        ParsedIntent parsed = new ParsedIntent();
+        parsed.setIntent(IntentType.TRAINING_ADVICE);
+        when(intentParser.parse("给我训练建议")).thenReturn(parsed);
+        when(toolRouter.route(any(), any())).thenReturn(new AssistantQueryResponse());
+
+        service.query(999L, request("给我训练建议"));
+
+        assertThat(parsed.getAdviceCount()).isEqualTo(3);
+    }
+
+    @Test
+    void capsTrainingAdviceCountAtFive() {
+        User user = new User();
+        user.setId(999L);
+        when(userRepository.selectById(999L)).thenReturn(user);
+        ParsedIntent parsed = new ParsedIntent();
+        parsed.setIntent(IntentType.TRAINING_ADVICE);
+        parsed.setAdviceCount(9);
+        when(intentParser.parse("给我9条训练建议")).thenReturn(parsed);
+        when(toolRouter.route(any(), any())).thenReturn(new AssistantQueryResponse());
+
+        service.query(999L, request("给我9条训练建议"));
+
+        assertThat(parsed.getAdviceCount()).isEqualTo(5);
+    }
+
     private AssistantQueryRequest request(String message) {
         AssistantQueryRequest request = new AssistantQueryRequest();
         request.setMessage(message);

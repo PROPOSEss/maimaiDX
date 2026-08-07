@@ -22,6 +22,8 @@ public class AssistantServiceImpl implements AssistantService {
     private static final int MAX_SCORE_LIMIT = 50;
     private static final int DEFAULT_RANDOM_COUNT = 5;
     private static final int MAX_RANDOM_COUNT = 10;
+    private static final int DEFAULT_ADVICE_COUNT = 3;
+    private static final int MAX_ADVICE_COUNT = 5;
 
     private final AssistantProperties assistantProperties;
     private final UserRepository userRepository;
@@ -41,7 +43,8 @@ public class AssistantServiceImpl implements AssistantService {
             response.setUserId(userId);
             response.setIntent(IntentType.UNKNOWN);
             response.setParsedIntent(parsedIntent);
-            response.setAnswer("暂时只支持查询最近成绩、最高成绩和随机推荐定数范围曲目。");
+            response.setParserSource(parsedIntent.getParserSource());
+            response.setAnswer("暂时只支持查询最近成绩、最高成绩、随机推荐定数范围曲目和训练建议。");
             return response;
         }
         return toolRouter.route(userId, parsedIntent);
@@ -76,6 +79,9 @@ public class AssistantServiceImpl implements AssistantService {
                     && parsedIntent.getMinConstant().compareTo(parsedIntent.getMaxConstant()) > 0) {
                 throw new IllegalArgumentException("minConstant 不能大于 maxConstant");
             }
+        } else if (parsedIntent.getIntent() == IntentType.TRAINING_ADVICE) {
+            parsedIntent.setAdviceCount(normalizePositiveLimit(
+                    parsedIntent.getAdviceCount(), DEFAULT_ADVICE_COUNT, MAX_ADVICE_COUNT, "adviceCount"));
         }
         return parsedIntent;
     }

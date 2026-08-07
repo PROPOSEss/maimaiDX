@@ -20,5 +20,6 @@ public class AssistantProperties {
         private String baseUrl = "https://api.openai.com/v1/chat/completions";
         private String model = "gpt-4o-mini";
         private int timeoutMs = 3000;
+        private int maxTokens = 600;
     }
 }

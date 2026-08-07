@@ -2,6 +2,7 @@ package com.maimai.maidx.assistant.parser;
 
 import com.maimai.maidx.assistant.dto.ParsedIntent;
 import com.maimai.maidx.assistant.enums.IntentType;
+import com.maimai.maidx.assistant.enums.ParserSource;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -18,6 +19,7 @@ class RuleBasedIntentParserTest {
 
         assertThat(intent.getIntent()).isEqualTo(IntentType.RECENT_SCORES);
         assertThat(intent.getLimit()).isEqualTo(20);
+        assertThat(intent.getParserSource()).isEqualTo(ParserSource.RULE);
     }
 
     @Test
@@ -36,6 +38,24 @@ class RuleBasedIntentParserTest {
         assertThat(intent.getCount()).isEqualTo(5);
         assertThat(intent.getMinConstant()).isEqualByComparingTo(new BigDecimal("12.7"));
         assertThat(intent.getMaxConstant()).isEqualByComparingTo(new BigDecimal("13.4"));
+        assertThat(intent.getParserSource()).isEqualTo(ParserSource.RULE);
+    }
+
+    @Test
+    void parsesTrainingAdviceBeforeRecentScores() {
+        ParsedIntent intent = parser.parse("根据我最近的成绩给我3条训练建议");
+
+        assertThat(intent.getIntent()).isEqualTo(IntentType.TRAINING_ADVICE);
+        assertThat(intent.getAdviceCount()).isEqualTo(3);
+        assertThat(intent.getParserSource()).isEqualTo(ParserSource.RULE);
+    }
+
+    @Test
+    void leavesAdviceCountEmptyWhenUserDoesNotSpecifyIt() {
+        ParsedIntent intent = parser.parse("根据我最近的成绩给一些训练建议");
+
+        assertThat(intent.getIntent()).isEqualTo(IntentType.TRAINING_ADVICE);
+        assertThat(intent.getAdviceCount()).isNull();
     }
 
     @Test

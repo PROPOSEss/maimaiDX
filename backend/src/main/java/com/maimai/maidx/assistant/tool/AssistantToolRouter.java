@@ -25,6 +25,8 @@ public class AssistantToolRouter {
         if (tool == null) {
             throw new IllegalArgumentException("暂不支持的助手意图: " + intent.getIntent());
         }
-        return tool.execute(userId, intent);
+        AssistantQueryResponse response = tool.execute(userId, intent);
+        response.setParserSource(intent.getParserSource());
+        return response;
     }
 }
