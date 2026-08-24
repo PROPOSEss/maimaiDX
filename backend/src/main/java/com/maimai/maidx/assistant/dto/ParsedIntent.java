@@ -21,6 +21,8 @@ public class ParsedIntent {
 
     private BigDecimal maxConstant;
 
+    private String keyword;
+
     private ParserSource parserSource = ParserSource.RULE;
 
     public static ParsedIntent unknown() {

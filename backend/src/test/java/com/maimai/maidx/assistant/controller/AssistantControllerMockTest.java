@@ -1,8 +1,13 @@
 package com.maimai.maidx.assistant.controller;
 
+import com.maimai.maidx.assistant.context.AssistantUserContext;
+import com.maimai.maidx.assistant.context.AssistantUserContextResolver;
+import com.maimai.maidx.assistant.context.UserIdentitySource;
 import com.maimai.maidx.assistant.dto.AssistantQueryResponse;
+import com.maimai.maidx.assistant.dto.AssistantStructuredData;
+import com.maimai.maidx.assistant.dto.AssistantToolInfo;
 import com.maimai.maidx.assistant.enums.IntentType;
-import com.maimai.maidx.assistant.service.AssistantService;
+import com.maimai.maidx.assistant.service.AssistantAgentService;
 import com.maimai.maidx.config.GlobalExceptionHandler;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -15,6 +20,7 @@ import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
@@ -30,13 +36,21 @@ class AssistantControllerMockTest {
     private MockMvc mockMvc;
 
     @Mock
-    private AssistantService assistantService;
+    private AssistantAgentService assistantAgentService;
+
+    @Mock
+    private AssistantUserContextResolver userContextResolver;
+
+    private final AssistantUserContext userContext =
+            new AssistantUserContext(999L, UserIdentitySource.DEVELOPMENT_HEADER);
 
     @BeforeEach
     void setUp() {
-        mockMvc = MockMvcBuilders.standaloneSetup(new AssistantController(assistantService))
+        mockMvc = MockMvcBuilders.standaloneSetup(
+                        new AssistantController(assistantAgentService, userContextResolver))
                 .setControllerAdvice(new GlobalExceptionHandler())
                 .build();
+        when(userContextResolver.resolve(999L, null)).thenReturn(userContext);
     }
 
     @Test
@@ -45,7 +59,15 @@ class AssistantControllerMockTest {
         response.setUserId(999L);
         response.setIntent(IntentType.RECENT_SCORES);
         response.setAnswer("已查询最近20条成绩。");
-        when(assistantService.query(eq(999L), any())).thenReturn(response);
+        AssistantToolInfo tool = new AssistantToolInfo();
+        tool.setName("recent_scores");
+        tool.setSuccess(true);
+        tool.setArguments(Map.of("limit", 20));
+        response.setTool(tool);
+        AssistantStructuredData structuredData = new AssistantStructuredData();
+        structuredData.getScores().add(new AssistantQueryResponse.ScoreItem());
+        response.setStructuredData(structuredData);
+        when(assistantAgentService.query(eq(userContext), any())).thenReturn(response);
 
         mockMvc.perform(post("/assistant/query")
                         .header("X-User-Id", "999")
@@ -54,7 +76,9 @@ class AssistantControllerMockTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value(200))
                 .andExpect(jsonPath("$.data.userId").value(999))
-                .andExpect(jsonPath("$.data.intent").value("RECENT_SCORES"));
+                .andExpect(jsonPath("$.data.intent").value("RECENT_SCORES"))
+                .andExpect(jsonPath("$.data.tool.name").value("recent_scores"))
+                .andExpect(jsonPath("$.data.structuredData.scores.length()").value(1));
     }
 
     @Test
@@ -68,7 +92,7 @@ class AssistantControllerMockTest {
         suggestion.setReason("近期达成率有波动");
         suggestion.setAction("每天练习三次");
         response.getSuggestions().add(suggestion);
-        when(assistantService.query(eq(999L), any())).thenReturn(response);
+        when(assistantAgentService.query(eq(userContext), any())).thenReturn(response);
 
         MvcResult result = mockMvc.perform(post("/assistant/query")
                         .header("X-User-Id", "999")

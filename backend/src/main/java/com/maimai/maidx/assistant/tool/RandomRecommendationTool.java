@@ -1,77 +1,64 @@
 package com.maimai.maidx.assistant.tool;
 
-import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
-import com.maimai.maidx.assistant.dto.AssistantQueryResponse;
-import com.maimai.maidx.assistant.dto.ParsedIntent;
+import com.maimai.maidx.assistant.context.AssistantUserContext;
+import com.maimai.maidx.assistant.dto.AssistantStructuredData;
 import com.maimai.maidx.assistant.enums.IntentType;
-import com.maimai.maidx.entity.Song;
-import com.maimai.maidx.entity.SongDifficulty;
-import com.maimai.maidx.repository.SongDifficultyRepository;
-import com.maimai.maidx.service.SongService;
+import com.maimai.maidx.assistant.service.AssistantBusinessService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
-import java.util.ArrayList;
-import java.util.Collections;
+import java.math.BigDecimal;
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
-import java.util.stream.Collectors;
 
 @Component
 @RequiredArgsConstructor
 public class RandomRecommendationTool extends AssistantToolSupport implements AssistantTool {
 
-    private final SongDifficultyRepository songDifficultyRepository;
-    private final SongService songService;
+    private static final AssistantToolDefinition DEFINITION = new AssistantToolDefinition(
+            AssistantToolNames.RANDOM_RECOMMENDATION,
+            "按照可选的谱面定数范围随机推荐不同歌曲，count可选，默认5，最大10。",
+            ToolSchemas.object(randomProperties()));
+
+    private final AssistantBusinessService businessService;
 
     @Override
-    public IntentType supportIntent() {
+    public AssistantToolDefinition getDefinition() {
+        return DEFINITION;
+    }
+
+    @Override
+    public IntentType getIntentType() {
         return IntentType.RANDOM_RECOMMENDATION;
     }
 
     @Override
-    public AssistantQueryResponse execute(Long userId, ParsedIntent intent) {
-        List<SongDifficulty> candidates = songDifficultyRepository.selectList(new LambdaQueryWrapper<SongDifficulty>()
-                .ge(intent.getMinConstant() != null, SongDifficulty::getLevelDecimal, intent.getMinConstant())
-                .le(intent.getMaxConstant() != null, SongDifficulty::getLevelDecimal, intent.getMaxConstant())
-                .isNotNull(SongDifficulty::getLevelDecimal));
-
-        List<SongDifficulty> shuffled = new ArrayList<>(candidates);
-        Collections.shuffle(shuffled);
-
-        Map<Long, SongDifficulty> distinctBySong = new LinkedHashMap<>();
-        for (SongDifficulty chart : shuffled) {
-            distinctBySong.putIfAbsent(chart.getSongId(), chart);
-            if (distinctBySong.size() >= intent.getCount()) {
-                break;
-            }
+    public ToolResult execute(AssistantUserContext userContext, Map<String, Object> params) {
+        int count = intParam(params, "count", 5);
+        BigDecimal minConstant = decimalParam(params, "minConstant");
+        BigDecimal maxConstant = decimalParam(params, "maxConstant");
+        if (minConstant != null && maxConstant != null && minConstant.compareTo(maxConstant) > 0) {
+            throw new IllegalArgumentException("minConstant 不能大于 maxConstant");
         }
 
-        List<SongDifficulty> selected = new ArrayList<>(distinctBySong.values());
-        Map<Long, Song> songMap = loadSongMap(selected);
-
-        AssistantQueryResponse response = new AssistantQueryResponse();
-        response.setUserId(userId);
-        response.setIntent(IntentType.RANDOM_RECOMMENDATION);
-        response.setParsedIntent(intent);
-        response.setRecommendations(selected.stream()
-                .map(chart -> toRecommendationItem(chart, songMap.get(chart.getSongId())))
+        AssistantBusinessService.RecommendationBundle result =
+                businessService.getRandomRecommendations(minConstant, maxConstant, count);
+        AssistantStructuredData data = new AssistantStructuredData();
+        data.setRecommendations(result.charts().stream()
+                .map(chart -> toRecommendationItem(chart, result.songs().get(chart.getSongId())))
                 .toList());
-        response.setAnswer("已随机推荐" + response.getRecommendations().size() + "首不同歌曲。");
-        return response;
+        return ToolResult.success(
+                DEFINITION.name(),
+                getIntentType(),
+                "已随机推荐" + data.getRecommendations().size() + "首不同歌曲。",
+                data);
     }
 
-    private Map<Long, Song> loadSongMap(List<SongDifficulty> charts) {
-        List<Long> songIds = charts.stream()
-                .map(SongDifficulty::getSongId)
-                .distinct()
-                .toList();
-        if (songIds.isEmpty()) {
-            return Map.of();
-        }
-        return songService.listByIds(songIds).stream()
-                .collect(Collectors.toMap(Song::getId, Function.identity()));
+    private static Map<String, Object> randomProperties() {
+        Map<String, Object> properties = new LinkedHashMap<>();
+        properties.put("count", ToolSchemas.integer(1, 10, "推荐歌曲数量"));
+        properties.put("minConstant", ToolSchemas.number(1.0, 15.9, "最低谱面定数"));
+        properties.put("maxConstant", ToolSchemas.number(1.0, 15.9, "最高谱面定数"));
+        return properties;
     }
 }

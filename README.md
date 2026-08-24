@@ -1,8 +1,8 @@
-# maimaiDX 玩家成绩分析与 LLM 增强型练习助手
+# maimaiDX 玩家成绩分析与轻量级 AI Agent
 
 ## 1. 项目简介
 
-maimaiDX 玩家成绩分析与 LLM 增强型练习助手是一个基于 Spring Boot 的后端项目，围绕 maimaiDX 玩家成绩数据提供：
+maimaiDX 玩家成绩分析与轻量级 AI Agent 是一个基于 Spring Boot 的后端项目，围绕 maimaiDX 玩家成绩数据提供：
 
 - 曲库管理与条件查询
 - 历史成绩快照
@@ -18,7 +18,7 @@ maimaiDX 玩家成绩分析与 LLM 增强型练习助手是一个基于 Spring B
 
 当前项目采用模块化单体架构。
 
-在 AI 模块中，LLM 不直接访问数据库，也不负责自由生成具体歌曲、定数、达成率或 RA 等事实数据。模型只根据 Java 后端计算出的聚合成绩画像选择受控训练方向，最终建议文本与成绩 evidence 由后端确定性生成，以降低模型幻觉和事实错配风险。
+Assistant 已从固定意图查询入口升级为单轮、单 Tool Agent。LLM 只负责把自然语言规划为严格 JSON ToolCall；Tool Registry 校验名称和参数 Schema，可信用户身份由后端单独注入，数据库查询与训练分析均由 Java Service 执行。Tool 执行后的 `answer` 由后端确定性生成，任何用户数据都不会被发送到外部总结服务。
 
 ---
 
@@ -45,10 +45,11 @@ maimaiDX 玩家成绩分析与 LLM 增强型练习助手是一个基于 Spring B
 ### AI
 
 - OpenAI Compatible Chat Completions 协议
-- LLM 意图识别
-- Tool Router
-- 受控训练方向选择
-- JSON 结构校验
+- 严格 JSON Agent 规划
+- Tool Registry
+- Tool 参数 Schema 校验
+- 可信 UserContext
+- 确定性 Answer Generator
 - RULE / LLM 双路径降级
 
 ### 工程能力
@@ -74,7 +75,8 @@ flowchart TD
     Client["客户端 / Swagger / PowerShell"] --> Controller["Controller"]
 
     Controller --> BusinessService["业务 Service"]
-    Controller --> AssistantService["Assistant Service"]
+    Controller --> UserContext["Trusted UserContext Resolver"]
+    UserContext --> AgentService["Assistant Agent Service"]
 
     BusinessService --> MySQL[("MySQL")]
     BusinessService --> Redis[("Redis")]
@@ -84,37 +86,37 @@ flowchart TD
     Queue --> Consumer["Import Consumer"]
     Consumer --> MySQL
 
-    AssistantService --> RuleParser["Rule Parser"]
-    AssistantService --> LlmParser["LLM Parser"]
+    AgentService --> RulePlanner["Rule Planner"]
+    AgentService --> LlmPlanner["LLM JSON Planner"]
+    AgentService --> Registry["Tool Registry + Schema Validator"]
 
-    AssistantService --> ToolRouter["Tool Router"]
+    Registry --> Recent["Recent Scores Tool"]
+    Registry --> Top["Top Scores Tool"]
+    Registry --> Random["Random Recommendation Tool"]
+    Registry --> Advice["Training Advice Tool"]
+    Registry --> Search["Song Search Tool"]
 
-    ToolRouter --> Recent["Recent Scores Tool"]
-    ToolRouter --> Top["Top Scores Tool"]
-    ToolRouter --> Random["Random Recommendation Tool"]
-    ToolRouter --> Advice["Training Advice Tool"]
-
-    Recent --> MySQL
-    Top --> MySQL
-    Random --> MySQL
-    Advice --> MySQL
-
-    Advice --> LLM["LLM选择受控FocusType"]
-    LLM --> JavaTemplate["Java生成确定性建议"]
+    Recent --> AssistantBusiness["Assistant Business Service"]
+    Top --> AssistantBusiness
+    Random --> AssistantBusiness
+    Advice --> AssistantBusiness
+    Search --> AssistantBusiness
+    AssistantBusiness --> MySQL
+    AgentService --> Answer["Deterministic Answer Generator"]
 ```
 
 整体设计原则：
 
 ```text
-自然语言理解 → LLM / Rule
+自然语言规划 → LLM 严格 JSON / Rule
 
-业务查询与计算 → Java Tool
+参数与身份校验 → Tool Registry / Trusted UserContext
+
+业务查询与训练计算 → Java Service
 
 真实事实 → MySQL
 
-训练方向选择 → LLM
-
-最终事实文本与 evidence → Java
+最终 answer、structuredData 与 evidence → Java
 ```
 
 ---
@@ -538,13 +540,13 @@ POST /api/assistant/query
 }
 ```
 
-Header：
+开发环境 Header：
 
 ```http
 X-User-Id: 999
 ```
 
-`X-User-Id` 当前可选。
+`X-User-Id` 仅用于开发和本地演示，当前可选。
 
 未提供时读取：
 
@@ -560,7 +562,13 @@ assistant.default-user-id
 
 系统仍会验证该用户是否真实存在。
 
-该默认用户机制仅用于本地开发和演示，正式环境不应依赖客户端可伪造的 Header，而应从认证上下文中获得用户身份。
+生产环境（`prod` Profile）忽略 `X-User-Id`，必须提供：
+
+```http
+Authorization: Bearer <JWT>
+```
+
+`userId` 由后端解析认证信息后写入可信 `AssistantUserContext`，LLM 和 Tool 参数均不能指定或覆盖用户身份。
 
 ---
 
@@ -574,6 +582,7 @@ assistant.default-user-id
 | `TOP_SCORES` | 查询不同谱面的最高成绩 |
 | `RANDOM_RECOMMENDATION` | 根据定数区间随机推荐歌曲 |
 | `TRAINING_ADVICE` | 根据成绩画像选择训练方向 |
+| `SONG_SEARCH` | 根据标题或曲师关键词搜索歌曲 |
 | `UNKNOWN` | 无法识别的输入 |
 
 示例：
@@ -594,24 +603,34 @@ assistant.default-user-id
 根据我最近的成绩分析一下，并给我3条训练建议
 ```
 
+```text
+搜索歌曲PANDORA
+```
+
 ---
 
-# 11. LLM + Tool Router
+# 11. 单轮 Agent + Tool Registry
+
+完整组件职责、时序、身份与隐私边界见 [Assistant Agent 架构说明](docs/assistant-agent-architecture.md)。
 
 Assistant 的核心流程：
 
 ```text
 用户自然语言
 ↓
-IntentParser
+AssistantAgentPlanner
 ↓
-ToolRouter
+严格JSON ToolCall
+↓
+Tool Registry + 参数Schema校验
 ↓
 业务Tool
 ↓
-MySQL
+AssistantBusinessService
 ↓
-结构化响应
+MySQL / Redis
+↓
+answer + tool信息 + structuredData
 ```
 
 例如：
@@ -619,18 +638,18 @@ MySQL
 ```text
 “查看我最高的10张谱面”
 ↓
-TOP_SCORES
+{"toolName":"top_scores","arguments":{"limit":10}}
 ↓
 TopScoresTool
 ↓
-查询score_record
-↓
-按chartId去重
+AssistantBusinessService
 ↓
 返回真实成绩
 ```
 
-LLM 不执行 SQL，也不能访问 Repository。
+当前一次请求最多执行一个 Tool。`AssistantAgentPlan` 内部使用 ToolCall 列表表示，便于后续扩展多 Tool 编排，但当前执行策略固定限制为 1。
+
+LLM 不执行 SQL、不能访问 Repository，也不能提供 `userId`。Tool 只处理参数和结构化结果转换，数据库查询及训练分析统一位于 Service 层。
 
 因此：
 
@@ -642,7 +661,7 @@ MySQL负责事实
 
 ---
 
-# 12. RULE / LLM 双路径
+# 12. 严格 JSON / RULE 双路径
 
 LLM 默认关闭。
 
@@ -661,7 +680,8 @@ ASSISTANT_AI_ENABLED=true
 ```text
 自然语言
 → RuleBasedIntentParser
-→ ToolRouter
+→ RuleBasedAssistantAgentPlanner
+→ Tool Registry
 ```
 
 模型不可用时也会自动降级。
@@ -675,15 +695,17 @@ ASSISTANT_AI_ENABLED=true
 - 空响应
 - 非法 JSON
 - 不符合约定的结构
-- 未知枚举
+- 未知 Tool
+- Tool 参数不符合 Schema
+- 尝试提供 `userId` 等未声明参数
 
 核心成绩查询不会依赖外部模型才能运行。
 
 ---
 
-# 13. 训练建议与事实约束
+# 13. 训练建议与隐私边界
 
-训练建议是 AI 模块中最重要的可靠性设计。
+训练建议的成绩聚合、方向选择和具体文案均由后端业务 Service 基于真实数据生成，Tool 只负责转换为结构化结果。
 
 早期方案允许模型自由生成：
 
@@ -711,9 +733,9 @@ RA
 
 ---
 
-## 13.1 LLM 只选择 FocusType
+## 13.1 后端生成 FocusType
 
-模型现在只能返回：
+当前后端生成：
 
 ```json
 {
@@ -731,7 +753,7 @@ RA
 TrainingFocusType
 ```
 
-模型不能自由生成：
+LLM 不能自由生成或覆盖：
 
 - 歌曲名称
 - achievement
@@ -743,42 +765,18 @@ TrainingFocusType
 
 ---
 
-## 13.2 模型输入
+## 13.2 外部模型数据边界
 
-发送给模型的只是一组聚合画像字段，例如：
-
-```text
-recentCount
-averageAchievement
-mainConstantMin
-mainConstantMax
-recentTrend
-b50EdgeRa
-improvementCandidateCount
-topScoreCount
-```
-
-不会发送：
+当前默认不会把 Tool 的结构化结果发送给外部模型，包括：
 
 - API Key
 - OpenID
-- 完整数据库 Entity
-- 完整成绩历史
-- 单曲名称列表
-- 单曲 achievement
-- 单曲 RA
+- 成绩明细或聚合指标
+- 训练 evidence
+- Tool structuredData
+- 原始用户身份
 
----
-
-## 13.3 Java 生成最终建议
-
-LLM：
-
-```text
-选择训练方向
-```
-
-Java：
+Java 后端负责：
 
 ```text
 生成title
@@ -793,36 +791,34 @@ Java：
 ```text
 成绩数据
 ↓
-Java计算TrainingProfile
+AssistantBusinessService计算画像
 ↓
-LLM选择FocusType
+TrainingAdviceTool转换结构化结果
 ↓
-Java根据FocusType生成训练建议
-↓
-Java返回真实evidence
+AssistantAgentService返回确定性answer与真实evidence
 ```
 
 ---
 
-## 13.4 Schema 白名单
+## 13.3 Tool Schema 白名单
 
 以下情况会直接拒绝模型结果：
 
 - 出现未知字段
-- 返回旧版自由文本结构
-- `focusType` 不存在
-- `focusType` 重复
-- 数量不足
+- Tool 名称不存在
+- 参数类型或范围错误
+- 缺少必填参数
+- 出现 `userId`、SQL 等未声明参数
 - 非法 JSON
 
 校验失败：
 
 ```text
-AdviceSource.LLM
+LLM ToolCall
 ↓
 丢弃模型结果
 ↓
-AdviceSource.RULE
+规则规划并重新执行Schema校验
 ```
 
 不会尝试通过正则或字符串替换“修复”模型编造的数据。
@@ -836,7 +832,17 @@ Assistant 返回：
 ```json
 {
   "parserSource": "LLM",
-  "adviceSource": "LLM"
+  "tool": {
+    "name": "recent_scores",
+    "plannerSource": "LLM",
+    "success": true,
+    "arguments": {
+      "limit": 5
+    }
+  },
+  "structuredData": {
+    "scores": []
+  }
 }
 ```
 
@@ -859,7 +865,7 @@ parserSource = LLM
 adviceSource = RULE
 ```
 
-表示训练建议模型路径失败，最终使用了规则降级。
+表示训练建议由后端业务规则生成。当前版本不会把成绩画像发送给外部 LLM。
 
 这样可以快速判断一次请求究竟走了哪个执行路径。
 
@@ -869,50 +875,61 @@ adviceSource = RULE
 
 ```json
 {
+  "answer": "已根据最近真实成绩生成3条训练建议。",
   "intent": "TRAINING_ADVICE",
   "parserSource": "LLM",
-  "adviceSource": "LLM",
+  "adviceSource": "RULE",
+  "tool": {
+    "name": "training_advice",
+    "plannerSource": "LLM",
+    "success": true,
+    "arguments": {
+      "adviceCount": 3
+    }
+  },
   "parsedIntent": {
     "intent": "TRAINING_ADVICE",
     "adviceCount": 3,
     "parserSource": "LLM"
   },
-  "suggestions": [
-    {
-      "focusType": "IMPROVEMENT_CANDIDATE",
-      "title": "优先复练接近提升线的谱面",
-      "reason": "近期存在可继续提升的候选谱面。",
-      "action": "从后端返回的 evidence 中优先选择接近目标线的谱面进行复练。"
-    },
-    {
-      "focusType": "CONSTANT_STABILITY",
-      "title": "围绕常打定数稳定练习",
-      "reason": "近期主要游玩定数区间仍存在发挥波动。",
-      "action": "先提高常打区间的稳定性，再逐步增加挑战难度。"
-    },
-    {
-      "focusType": "RECENT_CONSISTENCY",
-      "title": "关注近期发挥稳定性",
-      "reason": "近期成绩趋势由后端聚合计算。",
-      "action": "复盘低于近期平均水平的成绩，优先修正重复失误。"
-    }
-  ],
-  "evidence": [
-    {
-      "recordId": 51,
-      "songId": "mvp001",
-      "chartId": 92,
-      "songName": "Demo Future Bass",
-      "difficultyName": "MASTER",
-      "constant": 13.8,
-      "achievement": 99.5,
-      "ra": 289
-    }
-  ]
+  "structuredData": {
+    "suggestions": [
+      {
+        "focusType": "IMPROVEMENT_CANDIDATE",
+        "title": "优先复练接近提升线的谱面",
+        "reason": "近期存在可继续提升的候选谱面。",
+        "action": "优先减少重复失误，再逐步提高达成率。"
+      },
+      {
+        "focusType": "CONSTANT_STABILITY",
+        "title": "围绕常打定数稳定练习",
+        "reason": "近期主要游玩定数区间仍存在发挥波动。",
+        "action": "先提高常打区间的稳定性，再逐步增加挑战难度。"
+      },
+      {
+        "focusType": "RECENT_CONSISTENCY",
+        "title": "关注近期发挥稳定性",
+        "reason": "近期成绩平均达成率由后端计算。",
+        "action": "复盘低于近期平均水平的成绩，优先修正重复失误。"
+      }
+    ],
+    "evidence": [
+      {
+        "recordId": 51,
+        "songId": "mvp001",
+        "chartId": 92,
+        "songName": "Demo Future Bass",
+        "difficultyName": "MASTER",
+        "constant": 13.8,
+        "achievement": 99.5,
+        "ra": 289
+      }
+    ]
+  }
 }
 ```
 
-其中具体 evidence 只来自真实数据库记录。
+其中具体 evidence 只来自真实数据库记录。为兼容旧客户端，顶层 `suggestions`、`evidence`、`scores` 和 `recommendations` 字段暂时继续保留，与 `structuredData` 中的数据一致。
 
 ---
 
@@ -1291,9 +1308,13 @@ http://localhost:8080/api/v3/api-docs
 
 ---
 
-# 22. 启用 LLM
+# 22. 启用 LLM 规划器
 
 LLM 默认关闭。
+
+当前 LLM 只用于把用户自然语言转换为严格 JSON ToolCall，不参与 Tool 执行，也不总结 Tool 结果。最终 `answer` 始终由 `DeterministicAssistantAnswerGenerator` 生成。
+
+启用外部地址会把本次自然语言请求发送到该地址用于规划。若要求所有用户输入都不出站，请保持关闭，或只配置本地模型/明确授权的测试服务。
 
 启用时配置：
 
@@ -1304,6 +1325,16 @@ $env:ASSISTANT_AI_MODEL = "<模型ID>"
 $env:ASSISTANT_AI_TIMEOUT_MS = "10000"
 $env:ASSISTANT_AI_MAX_TOKENS = "600"
 ```
+
+无论 LLM 规划器是否开启，以下数据都不会作为总结输入发送：
+
+- `userId` 与认证信息
+- Tool 执行结果
+- 成绩明细和训练 evidence
+- `structuredData`
+- 数据库 Entity
+
+`AssistantAnswerGenerator` 是预留扩展接口。仓库当前只有确定性实现，没有可发送 Tool 结果的外部 LLM Summary 实现，也没有 Summary 开关。
 
 安全输入 API Key：
 
@@ -1354,8 +1385,10 @@ intent
 parserSource
 adviceSource
 parsedIntent
-suggestions
-evidence
+tool.name
+tool.plannerSource
+tool.arguments
+structuredData
 ```
 
 ---
@@ -1373,7 +1406,7 @@ cd D:\maimaiDX\backend
 当前项目测试结果：
 
 ```text
-Tests run: 105
+Tests run: 97
 Failures: 0
 Errors: 0
 Skipped: 0
@@ -1383,24 +1416,19 @@ BUILD SUCCESS
 
 测试覆盖包括：
 
-- 用户参数处理
-- 最近成绩排序
-- 最高成绩谱面去重
-- 推荐去重
-- 定数范围校验
-- LLM 开关
-- API Key 缺失
-- 模型请求失败
-- Timeout
-- 非法 JSON
-- UNKNOWN 意图
-- RULE 降级
+- 严格 JSON ToolCall 解析与非法字段降级
+- Tool 名称注册、重复名称检测和参数 Schema 校验
+- 禁止 LLM 参数携带 `userId`
+- 单轮单 Tool 执行上限
+- 五个 Tool 的 Service 委托和结构化结果转换
+- 开发环境 Header / 默认用户身份解析
+- 生产环境 JWT 身份解析与 Header 隔离
+- LLM 关闭、超时、非法响应和 RULE 降级
+- `answer + tool + structuredData` 接口结构
 - UTF-8 中文响应
-- 错误 charset 响应
-- adviceCount
-- FocusType Schema
-- 模型事实错配
-- evidence 一致性
+- Redis、RabbitMQ、缓存降级及原有业务回归
+
+其中 Assistant 相关测试 42 项，完整明细见 [Assistant Agent 改造测试报告](docs/assistant-agent-test-report.md)。
 
 ---
 
@@ -1542,10 +1570,16 @@ listener()
 
 ```text
 LLM
-→ 意图 / 受控训练方向
+→ 严格JSON ToolCall规划
+
+Tool Registry
+→ 名称白名单和参数Schema校验
 
 Tool
-→ 数据库查询和业务执行
+→ 参数读取和结构化结果转换
+
+AssistantBusinessService
+→ 数据库查询和训练分析
 ```
 
 避免让模型直接拥有数据库或 SQL 权限。
@@ -1554,19 +1588,19 @@ Tool
 
 ## LLM 事实约束
 
-训练建议不允许模型自由生成具体成绩事实。
+训练建议不允许模型自由生成具体成绩事实，Tool 执行结果也不会发送到外部 LLM 做总结。
 
 最终采用：
 
 ```text
-LLM选择FocusType
-+
-Java生成事实文本
+Java Service生成训练方向和事实文本
 +
 数据库evidence
++
+确定性answer
 ```
 
-模型异常则使用 RULE 降级。
+模型规划异常则使用 RULE 规划器降级。
 
 ---
 
@@ -1634,12 +1668,14 @@ LLM工程接入
 
 1. 将 TOP_SCORES 的去重和排序进一步下推数据库；
 2. 为大量历史成绩增加更适合的分页和查询方案；
-3. 用认证上下文替代 `X-User-Id` 和默认用户；
+3. 将生产 JWT 解析进一步接入统一 Spring Security Context；
 4. 为异步任务增加更完整的监控指标；
 5. 增加 Redis 命中率、MQ 消费速度等可观测指标；
 6. 使用 Testcontainers 自动构建 MySQL / Redis / RabbitMQ 测试环境；
 7. 进一步完善 OpenAPI 请求和响应示例；
-8. 根据真实用户数据调整训练方向规则。
+8. 根据真实用户数据调整训练方向规则；
+9. 在明确数据出站白名单后，为本地或指定测试服务实现可选 LLM Summary；
+10. 在响应协议升级后，将当前 `AssistantAgentPlan` 扩展为多 Tool 执行链。
 
 ---
 
@@ -1660,9 +1696,13 @@ MySQL索引优化
 ↓
 自然语言Assistant
 ↓
-LLM + Tool Router
+严格JSON Agent Planner
 ↓
-LLM事实边界与规则降级
+Tool Registry + Schema校验
+↓
+五个业务Tool + Service分层
+↓
+确定性answer与规则降级
 ```
 
 其中 AI 模块没有简单采用：
@@ -1678,21 +1718,21 @@ LLM事实边界与规则降级
 ```text
 用户自然语言
 ↓
-Intent Parser
+LLM JSON Planner / Rule Planner
 ↓
-Tool Router
+Tool Registry + Schema Validator
 ↓
-Java查询真实业务数据
+Trusted UserContext
 ↓
-TrainingProfile
+单个业务Tool
 ↓
-LLM选择受控FocusType
+AssistantBusinessService查询与计算
 ↓
-Java生成确定性训练建议
+Java生成确定性answer和structuredData
 ↓
 返回真实evidence
 ```
 
 通过将自然语言理解、业务执行和事实生成拆分，使外部模型在不可用或输出不合法时不会影响核心成绩业务。
 
-当前版本已完成自动化测试、Redis 故障降级验证、RabbitMQ 失败恢复验证以及真实 LLM 兼容接口端到端验收。
+当前版本已完成 97 项自动化测试，并保留 Redis 故障降级、RabbitMQ 失败恢复与 OpenAI Compatible 严格 JSON 规划能力。LLM 默认关闭，Tool 结果和用户成绩数据默认零出站。

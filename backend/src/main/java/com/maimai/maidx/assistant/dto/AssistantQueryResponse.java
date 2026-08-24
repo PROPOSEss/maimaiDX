@@ -21,6 +21,10 @@ public class AssistantQueryResponse {
 
     private String answer;
 
+    private AssistantToolInfo tool;
+
+    private AssistantStructuredData structuredData = new AssistantStructuredData();
+
     private ParserSource parserSource;
 
     private AdviceSource adviceSource;
@@ -38,6 +42,9 @@ public class AssistantQueryResponse {
 
     @JsonInclude(JsonInclude.Include.NON_EMPTY)
     private List<ScoreItem> evidence = new ArrayList<>();
+
+    @JsonInclude(JsonInclude.Include.NON_EMPTY)
+    private List<SongItem> songs = new ArrayList<>();
 
     @Data
     public static class ScoreItem {
@@ -76,5 +83,18 @@ public class AssistantQueryResponse {
         private String title;
         private String reason;
         private String action;
+    }
+
+    @Data
+    public static class SongItem {
+        private Long id;
+        private String songId;
+        private String title;
+        private String titleEn;
+        private String artist;
+        private String artistEn;
+        private Integer bpm;
+        private String version;
+        private String genre;
     }
 }

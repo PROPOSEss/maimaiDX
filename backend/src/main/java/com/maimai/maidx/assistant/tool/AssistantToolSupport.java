@@ -7,6 +7,7 @@ import com.maimai.maidx.entity.SongDifficulty;
 import com.maimai.maidx.enums.DifficultyEnum;
 
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
 import java.util.Comparator;
 import java.util.Map;
 
@@ -48,6 +49,38 @@ abstract class AssistantToolSupport {
         item.setConstant(chart.getLevelDecimal());
         item.setVersion(song == null ? null : song.getVersion());
         return item;
+    }
+
+    AssistantQueryResponse.SongItem toSongItem(Song song) {
+        AssistantQueryResponse.SongItem item = new AssistantQueryResponse.SongItem();
+        item.setId(song.getId());
+        item.setSongId(song.getSongId());
+        item.setTitle(song.getTitle());
+        item.setTitleEn(song.getTitleEn());
+        item.setArtist(song.getArtist());
+        item.setArtistEn(song.getArtistEn());
+        item.setBpm(song.getBpm());
+        item.setVersion(song.getVersion());
+        item.setGenre(song.getGenre());
+        return item;
+    }
+
+    int intParam(Map<String, Object> params, String name, int defaultValue) {
+        Object value = params.get(name);
+        return value == null ? defaultValue : ((Number) value).intValue();
+    }
+
+    BigDecimal decimalParam(Map<String, Object> params, String name) {
+        Object value = params.get(name);
+        return value == null ? null : new BigDecimal(value.toString());
+    }
+
+    String stringParam(Map<String, Object> params, String name) {
+        Object value = params.get(name);
+        if (value == null) {
+            throw new IllegalArgumentException("tool参数缺失: " + name);
+        }
+        return value.toString();
     }
 
     LocalDateTime playedAt(ScoreRecord record) {

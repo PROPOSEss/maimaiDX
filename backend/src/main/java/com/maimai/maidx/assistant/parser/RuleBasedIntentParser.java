@@ -19,6 +19,8 @@ public class RuleBasedIntentParser implements IntentParser {
             Pattern.compile("(\\d{1,2})\\s*(?:条|个)?\\s*(?:训练)?建议");
     private static final Pattern CONSTANT_RANGE_PATTERN =
             Pattern.compile("(\\d{1,2}(?:\\.\\d+)?)\\s*(?:到|至|-|~)\\s*(\\d{1,2}(?:\\.\\d+)?)");
+    private static final Pattern SONG_SEARCH_PATTERN = Pattern.compile(
+            "(?:搜索|查找|查询|找(?:一下|一找)?)(?:歌曲|曲目|歌)?\\s*[《“\\\"']?(.+?)[》”\\\"']?$");
 
     @Override
     public ParsedIntent parse(String message) {
@@ -50,6 +52,9 @@ public class RuleBasedIntentParser implements IntentParser {
             parsed.setParserSource(ParserSource.RULE);
             return parsed;
         }
+        if (isSongSearch(normalized)) {
+            return parseSongSearch(normalized);
+        }
         return ParsedIntent.unknown();
     }
 
@@ -78,6 +83,22 @@ public class RuleBasedIntentParser implements IntentParser {
     private boolean isRandomRecommendation(String message) {
         return (message.contains("随机") || message.contains("推荐") || message.contains("random"))
                 && (message.contains("定数") || message.contains("constant") || message.contains("ds"));
+    }
+
+    private boolean isSongSearch(String message) {
+        return SONG_SEARCH_PATTERN.matcher(message).find();
+    }
+
+    private ParsedIntent parseSongSearch(String message) {
+        Matcher matcher = SONG_SEARCH_PATTERN.matcher(message);
+        if (!matcher.find() || !StringUtils.hasText(matcher.group(1))) {
+            return ParsedIntent.unknown();
+        }
+        ParsedIntent parsed = new ParsedIntent();
+        parsed.setIntent(IntentType.SONG_SEARCH);
+        parsed.setKeyword(matcher.group(1).trim());
+        parsed.setParserSource(ParserSource.RULE);
+        return parsed;
     }
 
     private ParsedIntent parseRandomRecommendation(String message) {

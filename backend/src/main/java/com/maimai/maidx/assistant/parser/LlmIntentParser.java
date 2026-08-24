@@ -18,7 +18,7 @@ import java.util.Set;
 public class LlmIntentParser implements IntentParser {
 
     private static final Set<String> ALLOWED_FIELDS = Set.of(
-            "intent", "limit", "count", "adviceCount", "minConstant", "maxConstant");
+            "intent", "limit", "count", "adviceCount", "minConstant", "maxConstant", "keyword");
     private static final String SYSTEM_PROMPT = """
             You parse maimaiDX assistant user messages into JSON only.
             Return exactly one JSON object. Do not return Markdown, explanation, SQL, or extra text.
@@ -27,8 +27,9 @@ public class LlmIntentParser implements IntentParser {
             {"intent":"TOP_SCORES","limit":30}
             {"intent":"RANDOM_RECOMMENDATION","count":5,"minConstant":12.7,"maxConstant":13.4}
             {"intent":"TRAINING_ADVICE","adviceCount":3}
+            {"intent":"SONG_SEARCH","keyword":"PANDORA PARADOXXX","limit":10}
             {"intent":"UNKNOWN"}
-            Allowed fields: intent, limit, count, adviceCount, minConstant, maxConstant.
+            Allowed fields: intent, limit, count, adviceCount, minConstant, maxConstant, keyword.
             """;
 
     private final LlmClient llmClient;
@@ -90,6 +91,9 @@ public class LlmIntentParser implements IntentParser {
         }
         if (node.hasNonNull("maxConstant")) {
             parsed.setMaxConstant(node.get("maxConstant").decimalValue());
+        }
+        if (node.hasNonNull("keyword")) {
+            parsed.setKeyword(node.get("keyword").asText());
         }
         if (parsed.getMinConstant() != null
                 && parsed.getMaxConstant() != null

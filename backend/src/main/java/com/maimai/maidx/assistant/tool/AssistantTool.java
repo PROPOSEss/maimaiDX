@@ -1,12 +1,15 @@
 package com.maimai.maidx.assistant.tool;
 
-import com.maimai.maidx.assistant.dto.AssistantQueryResponse;
-import com.maimai.maidx.assistant.dto.ParsedIntent;
+import com.maimai.maidx.assistant.context.AssistantUserContext;
 import com.maimai.maidx.assistant.enums.IntentType;
+
+import java.util.Map;
 
 public interface AssistantTool {
 
-    IntentType supportIntent();
+    AssistantToolDefinition getDefinition();
 
-    AssistantQueryResponse execute(Long userId, ParsedIntent intent);
+    IntentType getIntentType();
+
+    ToolResult execute(AssistantUserContext userContext, Map<String, Object> params);
 }
