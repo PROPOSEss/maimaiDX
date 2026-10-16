@@ -1,6 +1,7 @@
 package com.maimai.maidx.assistant.agent;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.maimai.maidx.assistant.dto.AssistantConversationContext;
 import com.maimai.maidx.assistant.enums.ParserSource;
@@ -55,7 +56,9 @@ public class LlmAssistantAgentPlanner implements AssistantAgentPlanner {
     }
 
     private AssistantAgentPlan parse(String content) throws Exception {
-        JsonNode root = objectMapper.readTree(content.trim());
+        JsonNode root = objectMapper.reader()
+                .with(DeserializationFeature.FAIL_ON_TRAILING_TOKENS)
+                .readTree(content.trim());
         if (!root.isObject()) {
             throw new IllegalArgumentException("agent plan must be a JSON object");
         }

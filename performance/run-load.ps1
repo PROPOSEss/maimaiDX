@@ -8,6 +8,7 @@ param(
     [int]$Vus = 5,
     [int]$DurationSeconds = 10,
     [int]$MaxRequests = 0,
+    [string]$OutputPath = "",
     [ValidateSet(20, 50, 100)]
     [int]$ImportRecords = 20
 )
@@ -189,7 +190,9 @@ $summary = [ordered]@{
     success = $success.Count
     failed = $failed.Count
     failureRate = if ($items.Count -eq 0) { 0 } else { [Math]::Round($failed.Count / $items.Count, 4) }
-    throughput = [Math]::Round($items.Count / $elapsedSeconds, 2)
+    requestRate = [Math]::Round($items.Count / $elapsedSeconds, 2)
+    successfulQps = [Math]::Round($success.Count / $elapsedSeconds, 2)
+    throughput = [Math]::Round($success.Count / $elapsedSeconds, 2)
     avgMs = if ($latencies.Count -eq 0) { 0 } else { [Math]::Round(($latencies | Measure-Object -Average).Average, 2) }
     p50Ms = Get-Percentile $latencies 50
     p95Ms = Get-Percentile $latencies 95
@@ -201,4 +204,12 @@ if ($totalLatencies.Count -gt 0) {
     $summary.asyncTotalP95Ms = Get-Percentile $totalLatencies 95
 }
 
-$summary | ConvertTo-Json -Depth 5
+$summaryJson = $summary | ConvertTo-Json -Depth 5
+if (-not [string]::IsNullOrWhiteSpace($OutputPath)) {
+    $parent = Split-Path -Parent $OutputPath
+    if (-not [string]::IsNullOrWhiteSpace($parent)) {
+        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+    }
+    Set-Content -Path $OutputPath -Value $summaryJson -Encoding utf8
+}
+$summaryJson

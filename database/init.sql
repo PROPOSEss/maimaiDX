@@ -117,7 +117,7 @@ CREATE TABLE IF NOT EXISTS `score_record` (
     `player_id`       BIGINT       NOT NULL                COMMENT '关联玩家ID',
     `difficulty_id`   BIGINT       NOT NULL                COMMENT '关联谱面ID',
     `score`           INT          NOT NULL                COMMENT '得分(0-1010000)',
-    `achievement_rate` DECIMAL(6,2) DEFAULT NULL           COMMENT '达成率(%)',
+    `achievement_rate` DECIMAL(7,4) DEFAULT NULL           COMMENT '达成率(%)',
     `rank`            VARCHAR(8)   DEFAULT NULL            COMMENT '评级(SSS+/SSS/SS/S/AAA等)',
     `fc`              VARCHAR(16)  DEFAULT NULL            COMMENT 'FC状态(FC/AP)',
     `fs`              VARCHAR(16)  DEFAULT NULL            COMMENT 'FS状态(FS/FS+/FDX/FDX+)',

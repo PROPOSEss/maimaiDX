@@ -20,11 +20,11 @@ public class B50Response {
     /** 难度定数 */
     private Double level;
 
-    /** DX Rating 基础值（min(achievement/100, 100) × level） */
+    /** 单谱面 RA，采用 ScoreRules；Double 仅为旧响应数值类型。 */
     private Double dxRating;
 
     /** 成就率 */
-    private Double achievement;
+    private java.math.BigDecimal achievement;
 
     /** DX 分数 */
     private Integer dxScore;

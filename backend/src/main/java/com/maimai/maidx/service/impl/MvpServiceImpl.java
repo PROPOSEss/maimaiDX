@@ -18,6 +18,7 @@ import com.maimai.maidx.repository.SongDifficultyRepository;
 import com.maimai.maidx.repository.SongRepository;
 import com.maimai.maidx.service.MvpService;
 import com.maimai.maidx.service.SongCatalogService;
+import com.maimai.maidx.utils.ScoreRules;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.core.io.Resource;
@@ -122,6 +123,10 @@ public class MvpServiceImpl implements MvpService {
         if (request == null || request.getRecords() == null || request.getRecords().isEmpty()) {
             throw new IllegalArgumentException("成绩 JSON 不能为空");
         }
+        for (MvpDtos.ScoreImportItem item : request.getRecords()) {
+            if (item == null) throw new IllegalArgumentException("成绩记录不能为空");
+            ScoreRules.normalize(item.getAchievement());
+        }
         if (StringUtils.hasText(requestId)) {
             ScoreSnapshot existing = findSnapshotByRequestId(userId, requestId);
             if (existing != null) {
@@ -160,25 +165,22 @@ public class MvpServiceImpl implements MvpService {
             record.setUserId(userId);
             record.setSongId(song.getId());
             record.setDifficultyId(chart.getId());
-            record.setAchievementRate(item.getAchievement());
+            record.setAchievementRate(ScoreRules.normalize(item.getAchievement()));
             record.setDxScore(item.getDxScore());
             record.setRank(item.getRate());
             record.setFc(item.getFc());
             record.setFs(item.getFs());
             record.setScore(item.getDxScore() == null ? 0 : item.getDxScore());
-            record.setRa(calculateRa(chart.getLevelDecimal(), item.getAchievement()));
+            record.setRa(calculateRa(chart.getLevelDecimal(), record.getAchievementRate()));
             record.setIsB50(0);
             record.setPlayCount(1);
-            record.setBestPlayTime(LocalDateTime.now());
-            record.setLastPlayTime(LocalDateTime.now());
+            record.setBestPlayTime(item.getPlayedAt());
+            record.setLastPlayTime(item.getPlayedAt());
             scoreRecordRepository.insert(record);
             inserted.add(record);
         }
 
-        List<ScoreRecord> b50 = inserted.stream()
-                .sorted(Comparator.comparing(ScoreRecord::getRa, Comparator.nullsLast(Comparator.reverseOrder())))
-                .limit(50)
-                .toList();
+        List<ScoreRecord> b50 = ScoreRules.bestPerChart(inserted, 50);
         Set<Long> b50Ids = b50.stream().map(ScoreRecord::getId).collect(Collectors.toSet());
         Map<Long, Song> songMap = loadSongs(inserted.stream().map(ScoreRecord::getSongId).collect(Collectors.toSet()));
         for (ScoreRecord record : inserted) {
@@ -199,10 +201,8 @@ public class MvpServiceImpl implements MvpService {
     }
 
     private MvpDtos.ImportResult toImportResult(ScoreSnapshot snapshot) {
-        Long b50Count = scoreRecordRepository.selectCount(new LambdaQueryWrapper<ScoreRecord>()
-                .eq(ScoreRecord::getSnapshotId, snapshot.getId())
-                .eq(ScoreRecord::getIsB50, 1));
-        return toImportResult(snapshot, snapshot.getRecordCount() == null ? 0 : snapshot.getRecordCount(), b50Count.intValue());
+        int b50Count = getB50(snapshot.getUserId(), snapshot.getId()).getCount();
+        return toImportResult(snapshot, snapshot.getRecordCount() == null ? 0 : snapshot.getRecordCount(), b50Count);
     }
 
     private MvpDtos.ImportResult toImportResult(ScoreSnapshot snapshot, int importedCount, int b50Count) {
@@ -221,11 +221,10 @@ public class MvpServiceImpl implements MvpService {
         ScoreSnapshot snapshot = resolveSnapshot(userId, snapshotId);
         List<ScoreRecord> records = scoreRecordRepository.selectList(new LambdaQueryWrapper<ScoreRecord>()
                 .eq(ScoreRecord::getUserId, userId)
-                .eq(ScoreRecord::getSnapshotId, snapshot.getId())
-                .eq(ScoreRecord::getIsB50, 1)
-                .orderByDesc(ScoreRecord::getRa));
+                .eq(ScoreRecord::getSnapshotId, snapshot.getId()));
+        records = ScoreRules.bestPerChart(records, 50);
 
-        List<MvpDtos.ScoreItem> items = records.stream().map(this::toScoreItem).toList();
+        List<MvpDtos.ScoreItem> items = records.stream().map(this::toScoreItem).peek(item -> item.setIsB50(1)).toList();
         MvpDtos.B50Response response = new MvpDtos.B50Response();
         response.setSnapshotId(snapshot.getId());
         response.setRating(snapshot.getRating());
@@ -235,6 +234,17 @@ public class MvpServiceImpl implements MvpService {
         response.setLevelDistribution(items.stream().collect(Collectors.groupingBy(i -> String.valueOf(i.getLevel()), LinkedHashMap::new, Collectors.counting())));
         response.setDsDistribution(items.stream().collect(Collectors.groupingBy(i -> dsBucket(i.getDs()), LinkedHashMap::new, Collectors.counting())));
         return response;
+    }
+
+    @Override
+    public List<MvpDtos.ScoreItem> getSnapshotHistory(Long userId, Long snapshotId, int page, int size) {
+        if (page < 1 || size < 1 || size > 200) throw new IllegalArgumentException("page>=1，size必须为1到200");
+        ScoreSnapshot snapshot = resolveSnapshot(userId, snapshotId);
+        long offset = ((long) page - 1) * size;
+        return scoreRecordRepository.selectList(new LambdaQueryWrapper<ScoreRecord>()
+                .eq(ScoreRecord::getUserId, userId).eq(ScoreRecord::getSnapshotId, snapshot.getId())
+                .orderByDesc(ScoreRecord::getLastPlayTime).orderByDesc(ScoreRecord::getId)
+                .last("LIMIT " + size + " OFFSET " + offset)).stream().map(this::toScoreItem).toList();
     }
 
     @Override
@@ -251,7 +261,7 @@ public class MvpServiceImpl implements MvpService {
         List<ScoreRecord> snapshotScores = scoreRecordRepository.selectList(new LambdaQueryWrapper<ScoreRecord>()
                 .eq(ScoreRecord::getUserId, userId)
                 .eq(ScoreRecord::getSnapshotId, snapshot.getId()));
-        Map<Long, ScoreRecord> scoreByChart = snapshotScores.stream()
+        Map<Long, ScoreRecord> scoreByChart = ScoreRules.bestPerChart(snapshotScores, Integer.MAX_VALUE).stream()
                 .collect(Collectors.toMap(ScoreRecord::getDifficultyId, Function.identity(), (a, b) -> a));
 
         List<SongDifficulty> charts = songDifficultyRepository.selectList(new LambdaQueryWrapper<SongDifficulty>()
@@ -446,6 +456,10 @@ public class MvpServiceImpl implements MvpService {
         SongDifficulty chart = songDifficultyRepository.selectById(record.getDifficultyId());
         MvpDtos.ScoreItem item = new MvpDtos.ScoreItem();
         item.setId(record.getId());
+        item.setChartId(record.getDifficultyId());
+        item.setSnapshotId(record.getSnapshotId());
+        item.setPlayedAt(ScoreRules.playedAt(record));
+        item.setUploadedAt(record.getCreatedAt());
         item.setSongId(song == null ? null : song.getSongId());
         item.setTitle(song == null ? null : song.getTitle());
         item.setArtist(song == null ? null : song.getArtist());
@@ -497,7 +511,7 @@ public class MvpServiceImpl implements MvpService {
     }
 
     private String b50RecordKey(MvpDtos.ScoreItem item) {
-        return item.getSongId() + "#" + item.getDifficulty();
+        return item.getChartId() != null ? "chart#" + item.getChartId() : item.getSongId() + "#" + item.getDifficulty();
     }
 
     private MvpDtos.GrowthScoreChangeItem toGrowthScoreChangeItem(MvpDtos.ScoreItem from, MvpDtos.ScoreItem to) {
@@ -533,26 +547,7 @@ public class MvpServiceImpl implements MvpService {
     }
 
     private int calculateRa(BigDecimal ds, BigDecimal achievement) {
-        if (ds == null || achievement == null) {
-            return 0;
-        }
-        BigDecimal coefficient;
-        if (achievement.compareTo(TARGET_SSS_PLUS) >= 0) {
-            coefficient = new BigDecimal("22.4");
-        } else if (achievement.compareTo(TARGET_SSS) >= 0) {
-            coefficient = new BigDecimal("21.6");
-        } else if (achievement.compareTo(new BigDecimal("99.500")) >= 0) {
-            coefficient = new BigDecimal("21.1");
-        } else if (achievement.compareTo(new BigDecimal("99.000")) >= 0) {
-            coefficient = new BigDecimal("20.8");
-        } else if (achievement.compareTo(new BigDecimal("98.000")) >= 0) {
-            coefficient = new BigDecimal("20.3");
-        } else if (achievement.compareTo(new BigDecimal("97.000")) >= 0) {
-            coefficient = new BigDecimal("20.0");
-        } else {
-            coefficient = new BigDecimal("18.0");
-        }
-        return ds.multiply(achievement).multiply(coefficient).divide(new BigDecimal("100"), 0, RoundingMode.DOWN).intValue();
+        return ScoreRules.calculateRa(ds, achievement);
     }
 
     private BigDecimal recommendScore(SongDifficulty chart, BigDecimal achievement, int expectedGain) {

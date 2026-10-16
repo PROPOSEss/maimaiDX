@@ -74,6 +74,15 @@ public class MvpController {
         return Result.success(mvpService.getB50(userId, snapshotId));
     }
 
+    @Operation(summary = "Get submitted score history without chart deduplication; play time may be unknown")
+    @GetMapping("/player/{userId}/history")
+    public Result<List<MvpDtos.ScoreItem>> getHistory(@PathVariable Long userId,
+            @RequestParam(required = false) Long snapshotId,
+            @RequestParam(defaultValue = "1") int page,
+            @RequestParam(defaultValue = "50") int size) {
+        return Result.success(mvpService.getSnapshotHistory(userId, snapshotId, page, size));
+    }
+
     @Operation(summary = "Generate song recommendations")
     @PostMapping("/player/{userId}/recommend")
     public Result<MvpDtos.RecommendationResponse> generateRecommendations(

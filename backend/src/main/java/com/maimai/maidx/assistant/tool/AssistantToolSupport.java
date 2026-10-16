@@ -84,19 +84,11 @@ abstract class AssistantToolSupport {
     }
 
     LocalDateTime playedAt(ScoreRecord record) {
-        if (record.getLastPlayTime() != null) {
-            return record.getLastPlayTime();
-        }
-        if (record.getBestPlayTime() != null) {
-            return record.getBestPlayTime();
-        }
-        return record.getCreatedAt();
+        return com.maimai.maidx.utils.ScoreRules.playedAt(record);
     }
 
     Comparator<ScoreRecord> topScoreComparator() {
-        return Comparator
-                .comparing(ScoreRecord::getAchievementRate, Comparator.nullsFirst(Comparator.naturalOrder()))
-                .thenComparing(this::playedAt, Comparator.nullsFirst(Comparator.naturalOrder()));
+        return com.maimai.maidx.utils.ScoreRules.bestComparator();
     }
 
     private Song resolveSong(ScoreRecord record, SongDifficulty chart, Map<Long, Song> songMap) {

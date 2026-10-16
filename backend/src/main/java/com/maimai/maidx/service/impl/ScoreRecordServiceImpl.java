@@ -5,13 +5,14 @@ import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.maimai.maidx.entity.ScoreRecord;
 import com.maimai.maidx.repository.ScoreRecordRepository;
+import com.maimai.maidx.repository.SongDifficultyRepository;
 import com.maimai.maidx.service.ScoreRecordService;
+import com.maimai.maidx.utils.ScoreRules;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDateTime;
 import java.util.List;
 
 /**
@@ -21,6 +22,7 @@ import java.util.List;
 @Service
 @RequiredArgsConstructor
 public class ScoreRecordServiceImpl extends ServiceImpl<ScoreRecordRepository, ScoreRecord> implements ScoreRecordService {
+    private final SongDifficultyRepository songDifficultyRepository;
 
     @Override
     public Page<ScoreRecord> getPlayerScores(Long playerId, int page, int size) {
@@ -32,37 +34,38 @@ public class ScoreRecordServiceImpl extends ServiceImpl<ScoreRecordRepository, S
 
     @Override
     public List<ScoreRecord> getPlayerB50(Long playerId) {
-        return list(new LambdaQueryWrapper<ScoreRecord>()
-                .eq(ScoreRecord::getPlayerId, playerId)
-                .orderByDesc(ScoreRecord::getScore)
-                .last("LIMIT 50"));
+        return ScoreRules.bestPerChart(list(new LambdaQueryWrapper<ScoreRecord>()
+                .eq(ScoreRecord::getPlayerId, playerId)), 50);
     }
 
     @Override
     @Transactional
     public void saveOrUpdateScore(ScoreRecord score) {
+        score.setAchievementRate(ScoreRules.normalize(score.getAchievementRate()));
+        var chart = songDifficultyRepository.selectById(score.getDifficultyId());
+        if (chart == null || chart.getLevelDecimal() == null) throw new IllegalArgumentException("谱面定数缺失");
+        score.setRa(ScoreRules.calculateRa(chart.getLevelDecimal(), score.getAchievementRate()));
+        // Legacy per-player aggregate API, not the snapshot history import API.
         LambdaQueryWrapper<ScoreRecord> wrapper = new LambdaQueryWrapper<ScoreRecord>()
                 .eq(ScoreRecord::getPlayerId, score.getPlayerId())
                 .eq(ScoreRecord::getDifficultyId, score.getDifficultyId());
 
         ScoreRecord existing = getOne(wrapper);
         if (existing != null) {
+            if (existing.getAchievementRate() != null) existing.setRa(ScoreRules.calculateRa(chart.getLevelDecimal(), existing.getAchievementRate()));
             // 更新：保留最高分
-            if (score.getScore() > existing.getScore()) {
+            if (ScoreRules.bestComparator().compare(score, existing) > 0) {
                 score.setId(existing.getId());
                 score.setPlayCount(existing.getPlayCount() + 1);
-                score.setBestPlayTime(LocalDateTime.now());
                 score.setCreatedAt(existing.getCreatedAt()); // 保留原始创建时间
                 updateById(score);
             } else {
                 existing.setPlayCount(existing.getPlayCount() + 1);
-                existing.setLastPlayTime(LocalDateTime.now());
+                if (score.getLastPlayTime() != null) existing.setLastPlayTime(score.getLastPlayTime());
                 updateById(existing);
             }
         } else {
             score.setPlayCount(1);
-            score.setBestPlayTime(LocalDateTime.now());
-            score.setLastPlayTime(LocalDateTime.now());
             save(score);
         }
     }

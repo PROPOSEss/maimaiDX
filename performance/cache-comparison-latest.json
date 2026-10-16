@@ -1,0 +1,117 @@
+{
+  "generatedAt": "2026-09-16T11:54:23.651459+08:00",
+  "environment": {
+    "operatingSystem": "macOS-26.6.2-arm64-arm-64bit",
+    "machine": "arm64",
+    "python": "3.9.6",
+    "java": "openjdk version \"17.0.20\" 2026-07-21",
+    "mysql": "8.0.46",
+    "redis": "7.4.10",
+    "springBootStart": "java -jar backend/target/maidx-1.0.0-SNAPSHOT.jar",
+    "mysqlLocation": "local Docker Compose container",
+    "redisLocation": "local Docker Compose container"
+  },
+  "method": {
+    "endpoint": "GET /api/charts/s001",
+    "songId": "s001",
+    "songCount": 30,
+    "chartCount": 90,
+    "targetChartCount": 3,
+    "warmupRequestsPerMode": 100,
+    "concurrency": [
+      10,
+      50
+    ],
+    "durationSecondsPerRun": 30,
+    "qpsDefinition": "successful requests / measured run seconds",
+    "latencyDefinition": "all completed HTTP request latencies, nearest-rank percentiles"
+  },
+  "verification": {
+    "mysql": {
+      "verificationRequests": 3,
+      "songSqlQueries": 6,
+      "redisKey": "maidx:songCharts::s001",
+      "redisKeyExists": false,
+      "redisTtlSeconds": -2,
+      "redisKeyspaceHitDelta": null
+    },
+    "redis_hit": {
+      "verificationRequests": 3,
+      "songSqlQueries": 0,
+      "redisKey": "maidx:songCharts::s001",
+      "redisKeyExists": true,
+      "redisTtlSeconds": 21599,
+      "redisKeyspaceHitDelta": 3
+    }
+  },
+  "results": [
+    {
+      "scenario": "mysql",
+      "concurrency": 10,
+      "configuredDurationSeconds": 30,
+      "measuredDurationSeconds": 30.001,
+      "startedAtUtc": "2026-09-16T03:54:26.284828+00:00",
+      "totalRequests": 222892,
+      "successfulRequests": 222892,
+      "failedRequests": 0,
+      "errorRatePercent": 0.0,
+      "avgMs": 1.34,
+      "p50Ms": 1.27,
+      "p95Ms": 1.9,
+      "p99Ms": 2.62,
+      "successfulQps": 7429.5,
+      "rawCsv": "performance/results/20260916-115422/mysql-c10.csv"
+    },
+    {
+      "scenario": "mysql",
+      "concurrency": 50,
+      "configuredDurationSeconds": 30,
+      "measuredDurationSeconds": 30.007,
+      "startedAtUtc": "2026-09-16T03:54:56.589929+00:00",
+      "totalRequests": 244262,
+      "successfulRequests": 244262,
+      "failedRequests": 0,
+      "errorRatePercent": 0.0,
+      "avgMs": 6.14,
+      "p50Ms": 5.22,
+      "p95Ms": 13.09,
+      "p99Ms": 19.55,
+      "successfulQps": 8140.29,
+      "rawCsv": "performance/results/20260916-115422/mysql-c50.csv"
+    },
+    {
+      "scenario": "redis_hit",
+      "concurrency": 10,
+      "configuredDurationSeconds": 30,
+      "measuredDurationSeconds": 30.001,
+      "startedAtUtc": "2026-09-16T03:55:42.079767+00:00",
+      "totalRequests": 298266,
+      "successfulRequests": 298266,
+      "failedRequests": 0,
+      "errorRatePercent": 0.0,
+      "avgMs": 1.0,
+      "p50Ms": 0.92,
+      "p95Ms": 1.7,
+      "p99Ms": 2.33,
+      "successfulQps": 9941.96,
+      "rawCsv": "performance/results/20260916-115422/redis_hit-c10.csv"
+    },
+    {
+      "scenario": "redis_hit",
+      "concurrency": 50,
+      "configuredDurationSeconds": 30,
+      "measuredDurationSeconds": 30.003,
+      "startedAtUtc": "2026-09-16T03:56:12.512892+00:00",
+      "totalRequests": 301620,
+      "successfulRequests": 301620,
+      "failedRequests": 0,
+      "errorRatePercent": 0.0,
+      "avgMs": 4.97,
+      "p50Ms": 4.12,
+      "p95Ms": 11.61,
+      "p99Ms": 16.89,
+      "successfulQps": 10052.96,
+      "rawCsv": "performance/results/20260916-115422/redis_hit-c50.csv"
+    }
+  ]
+}

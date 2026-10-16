@@ -49,6 +49,8 @@ public class MvpDtos {
         private String songId;
         private Integer difficulty;
         private BigDecimal achievement;
+        /** Actual source play time, optional. Never inferred from upload time. */
+        private LocalDateTime playedAt;
         private Integer dxScore;
         private String rate;
         private String fc;
@@ -109,6 +111,10 @@ public class MvpDtos {
     @Data
     public static class ScoreItem {
         private Long id;
+        private Long chartId;
+        private Long snapshotId;
+        private LocalDateTime playedAt;
+        private LocalDateTime uploadedAt;
         private String songId;
         private String title;
         private String artist;

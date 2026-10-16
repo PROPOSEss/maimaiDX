@@ -17,12 +17,15 @@ import com.maimai.maidx.repository.SongFeatureRepository;
 import com.maimai.maidx.service.ScoreAnalysisService;
 import com.maimai.maidx.utils.BeanUtil;
 import com.maimai.maidx.utils.CommonUtil;
+import com.maimai.maidx.utils.ScoreRules;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.util.*;
 import java.util.stream.Collectors;
 
@@ -63,7 +66,8 @@ public class ScoreAnalysisServiceImpl implements ScoreAnalysisService {
             return Collections.emptyList();
         }
 
-        // 3. 计算 DX Rating 并排序取 Top 50
+        // Legacy player aggregate model: calculate using the same decimal RA policy.
+        records = ratingBest(records, 50);
         List<B50Response> b50List = new ArrayList<>();
 
         for (ScoreRecord record : records) {
@@ -76,11 +80,6 @@ public class ScoreAnalysisServiceImpl implements ScoreAnalysisService {
             // 查找歌曲信息
             Song song = songRepository.selectById(difficulty.getSongId());
 
-            // DX Rating = min(achievementRate/100, 100.5) × level
-            double achievement = record.getAchievementRate() != null ? record.getAchievementRate().doubleValue() : 0;
-            double ratingFactor = Math.min(achievement / 100.0, 100.5);
-            double dxRating = ratingFactor * difficulty.getLevel();
-
             B50Response item = new B50Response();
             if (song != null) {
                 item.setSongId(song.getSongId());
@@ -88,8 +87,8 @@ public class ScoreAnalysisServiceImpl implements ScoreAnalysisService {
             }
             item.setDifficulty(BeanUtil.getDifficultyName(difficulty.getDifficulty()));
             item.setLevel(difficulty.getLevelDecimal() != null ? difficulty.getLevelDecimal().doubleValue() : difficulty.getLevel().doubleValue());
-            item.setDxRating(dxRating);
-            item.setAchievement(achievement);
+            item.setDxRating(record.getRa().doubleValue()); // legacy numeric response only
+            item.setAchievement(record.getAchievementRate());
             item.setDxScore(record.getDxScore());
             item.setAchievementRank(record.getRank());
 
@@ -97,7 +96,7 @@ public class ScoreAnalysisServiceImpl implements ScoreAnalysisService {
         }
 
         // 按 DX Rating 降序排序取 Top 50
-        b50List.sort((a, b) -> Double.compare(b.getDxRating(), a.getDxRating()));
+        // Already ordered by RA, achievement, DX Score, actual play time, stable ID.
 
         // 设置排名
         List<B50Response> result = new ArrayList<>();
@@ -145,20 +144,16 @@ public class ScoreAnalysisServiceImpl implements ScoreAnalysisService {
 
             if (!monthRecords.isEmpty()) {
                 // 平均成就率
-                double avgAchievement = monthRecords.stream()
-                        .filter(r -> r.getAchievementRate() != null)
-                        .mapToDouble(r -> r.getAchievementRate().doubleValue())
-                        .average()
-                        .orElse(0.0);
-                trend.setAvgAchievement(Math.round(avgAchievement * 100.0) / 100.0);
+                List<BigDecimal> achievements = monthRecords.stream().map(ScoreRecord::getAchievementRate)
+                        .filter(Objects::nonNull).toList();
+                BigDecimal average = achievements.isEmpty() ? BigDecimal.ZERO : achievements.stream()
+                        .reduce(BigDecimal.ZERO, BigDecimal::add)
+                        .divide(BigDecimal.valueOf(achievements.size()), 4, RoundingMode.HALF_UP);
+                trend.setAvgAchievement(average.doubleValue()); // final display conversion, not RA input
 
                 // 最佳成就率
-                double bestAchievement = monthRecords.stream()
-                        .filter(r -> r.getAchievementRate() != null)
-                        .mapToDouble(r -> r.getAchievementRate().doubleValue())
-                        .max()
-                        .orElse(0.0);
-                trend.setBestAchievement(bestAchievement);
+                trend.setBestAchievement(achievements.stream().max(BigDecimal::compareTo)
+                        .orElse(BigDecimal.ZERO).doubleValue());
 
                 // AP数量 (FC=AP)
                 int apCount = (int) monthRecords.stream()
@@ -206,17 +201,7 @@ public class ScoreAnalysisServiceImpl implements ScoreAnalysisService {
                         .le(ScoreRecord::getBestPlayTime, monthEnd.atTime(23, 59, 59))
         );
 
-        double totalRating = 0;
-        for (ScoreRecord record : records) {
-            SongDifficulty difficulty = songDifficultyRepository.selectById(record.getDifficultyId());
-            if (difficulty != null && difficulty.getLevel() != null) {
-                double achievement = record.getAchievementRate() != null ? record.getAchievementRate().doubleValue() : 0;
-                double factor = Math.min(achievement / 100.0, 100.5);
-                totalRating += factor * difficulty.getLevel();
-            }
-        }
-
-        return totalRating / 50.0;
+        return ratingBest(records, 50).stream().mapToInt(ScoreRecord::getRa).sum();
     }
 
     @Override
@@ -230,7 +215,7 @@ public class ScoreAnalysisServiceImpl implements ScoreAnalysisService {
                 .mapToDouble(B50Response::getDxRating)
                 .sum();
 
-        return Math.round(totalDxRating / 50.0 * 100.0) / 100.0;
+        return totalDxRating;
     }
 
     @Override
@@ -263,9 +248,10 @@ public class ScoreAnalysisServiceImpl implements ScoreAnalysisService {
                 new LambdaQueryWrapper<ScoreRecord>()
                         .eq(ScoreRecord::getPlayerId, playerId)
                         .in(ScoreRecord::getDifficultyId, diffIds)
-                        .orderByDesc(ScoreRecord::getScore)
-                        .last("LIMIT " + size + " OFFSET " + (page - 1) * size)
         );
+        if (page < 1 || size < 1 || size > 200) throw new IllegalArgumentException("非法分页参数");
+        records = ratingBest(records, Integer.MAX_VALUE).stream()
+                .skip(((long) page - 1) * size).limit(size).toList();
 
         // 组装带歌曲信息的响应
         Map<Long, SongDifficulty> diffMap = diffList.stream()
@@ -283,9 +269,18 @@ public class ScoreAnalysisServiceImpl implements ScoreAnalysisService {
                 .collect(Collectors.toList());
     }
 
-    /**
-     * 解析难度名到数值
-     */
+    private List<ScoreRecord> ratingBest(List<ScoreRecord> records, int limit) {
+        List<ScoreRecord> valid = new ArrayList<>();
+        for (ScoreRecord record : records) {
+            SongDifficulty chart = songDifficultyRepository.selectById(record.getDifficultyId());
+            if (chart == null || chart.getLevelDecimal() == null || record.getAchievementRate() == null) continue;
+            record.setRa(ScoreRules.calculateRa(chart.getLevelDecimal(), record.getAchievementRate()));
+            valid.add(record);
+        }
+        return ScoreRules.bestPerChart(valid, limit);
+    }
+
+    /** 解析难度名到数值 */
     private Integer parseDifficultyName(String difficulty) {
         if (difficulty == null) return null;
         return switch (difficulty.toUpperCase()) {

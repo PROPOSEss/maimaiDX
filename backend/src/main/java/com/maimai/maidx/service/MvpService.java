@@ -14,6 +14,8 @@ public interface MvpService {
 
     List<MvpDtos.ChartItem> getCharts(String songId);
 
+    List<MvpDtos.ScoreItem> getSnapshotHistory(Long userId, Long snapshotId, int page, int size);
+
     MvpDtos.ImportResult importScores(Long userId, MvpDtos.ScoreImportRequest request);
 
     MvpDtos.ImportResult importScores(Long userId, MvpDtos.ScoreImportRequest request, String requestId);

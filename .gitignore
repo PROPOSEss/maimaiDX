@@ -21,6 +21,7 @@ backend/src/main/resources/application-*.local.yml
 # Logs and temporary files
 *.log
 *.tmp
+performance/results/
 
 # Operating system files
 .DS_Store

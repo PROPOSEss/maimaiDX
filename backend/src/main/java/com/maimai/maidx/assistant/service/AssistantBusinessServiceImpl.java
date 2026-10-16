@@ -9,6 +9,7 @@ import com.maimai.maidx.entity.SongDifficulty;
 import com.maimai.maidx.repository.ScoreRecordRepository;
 import com.maimai.maidx.repository.SongDifficultyRepository;
 import com.maimai.maidx.service.SongService;
+import com.maimai.maidx.utils.ScoreRules;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -44,6 +45,7 @@ public class AssistantBusinessServiceImpl implements AssistantBusinessService {
                 .orderByDesc(ScoreRecord::getLastPlayTime)
                 .orderByDesc(ScoreRecord::getBestPlayTime)
                 .orderByDesc(ScoreRecord::getCreatedAt)
+                .orderByDesc(ScoreRecord::getId)
                 .last("LIMIT " + limit));
         return scoreBundle(records);
     }
@@ -54,17 +56,7 @@ public class AssistantBusinessServiceImpl implements AssistantBusinessService {
                 .eq(ScoreRecord::getUserId, userId)
                 .isNotNull(ScoreRecord::getDifficultyId));
 
-        List<ScoreRecord> topRecords = records.stream()
-                .collect(Collectors.toMap(
-                        ScoreRecord::getDifficultyId,
-                        Function.identity(),
-                        (left, right) -> topScoreComparator().compare(left, right) >= 0 ? left : right,
-                        LinkedHashMap::new))
-                .values()
-                .stream()
-                .sorted(topScoreComparator().reversed())
-                .limit(limit)
-                .toList();
+        List<ScoreRecord> topRecords = ScoreRules.bestPerChart(records, limit);
         return scoreBundle(topRecords);
     }
 
@@ -119,7 +111,7 @@ public class AssistantBusinessServiceImpl implements AssistantBusinessService {
                 .filter(Objects::nonNull)
                 .filter(value -> value.compareTo(IMPROVEMENT_MIN) >= 0 && value.compareTo(IMPROVEMENT_MAX) < 0)
                 .count();
-        ScoreBundle top = getTopScores(userId, 10);
+        ScoreBundle top = getTopScores(userId, 50);
         Integer b50EdgeRa = top.records().stream()
                 .map(ScoreRecord::getRa)
                 .filter(Objects::nonNull)
@@ -214,19 +206,11 @@ public class AssistantBusinessServiceImpl implements AssistantBusinessService {
     }
 
     private Comparator<ScoreRecord> topScoreComparator() {
-        return Comparator
-                .comparing(ScoreRecord::getAchievementRate, Comparator.nullsFirst(Comparator.naturalOrder()))
-                .thenComparing(this::playedAt, Comparator.nullsFirst(Comparator.naturalOrder()));
+        return ScoreRules.bestComparator();
     }
 
     private LocalDateTime playedAt(ScoreRecord record) {
-        if (record.getLastPlayTime() != null) {
-            return record.getLastPlayTime();
-        }
-        if (record.getBestPlayTime() != null) {
-            return record.getBestPlayTime();
-        }
-        return record.getCreatedAt();
+        return ScoreRules.playedAt(record);
     }
 
     private BigDecimal averageAchievement(List<ScoreRecord> records) {
